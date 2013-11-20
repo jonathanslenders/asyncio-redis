@@ -10,6 +10,7 @@ from asyncio.log import logger
 
 from collections import deque
 from functools import wraps
+from inspect import getfullargspec, formatargspec
 
 loop = asyncio.get_event_loop()
 loop.add_signal_handler(signal.SIGINT, loop.stop)
@@ -109,6 +110,12 @@ def _command(method):
             return method(self, *a[1:], **kw)
         else:
             return method(self, *a, **kw)
+
+    # Append the real signature as the first line in the docstring.
+    #
+    signature = formatargspec(* getfullargspec(method))
+    wrapper.__doc__ = '%s%s\n%s' % (method.__name__, signature, method.__doc__)
+
     return wrapper
 
 

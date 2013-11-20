@@ -18,6 +18,12 @@ Features
 - Blocking calls and transactions supported
 - Streaming of some multi bulk replies
 
+Installation
+------------
+
+::
+
+    pip install asyncio_redis
 
 Example
 -------
@@ -76,15 +82,6 @@ Reference
 
 :ref:`View reference <redis-reference>`
 
-Table of contents
------------------
-
-.. toctree::
-   :maxdepth: 2
-
-   pages/reference
-
-
 
 Indices and tables
 ==================
@@ -92,3 +89,9 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
+
+
+.. toctree::
+   :maxdepth: 2
+
+   pages/reference

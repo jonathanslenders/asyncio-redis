@@ -12,6 +12,12 @@ Features
 - Blocking calls and transactions supported
 - Streaming of some multi bulk replies
 
+Installation
+------------
+
+.. code::
+
+    pip install asyncio_redis
 
 Documentation
 -------------

@@ -18,6 +18,9 @@ wrapper which also offers connection pooling.
 .. autoclass:: asyncio_redis.Connection
     :members:
 
+.. autoclass:: asyncio_redis.StatusReply
+    :members:
+
 .. autoclass:: asyncio_redis.MultiBulkReply
     :members:
 

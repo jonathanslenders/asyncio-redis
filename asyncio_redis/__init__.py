@@ -10,7 +10,7 @@ from asyncio.log import logger
 
 from collections import deque
 from functools import wraps
-from inspect import getfullargspec, formatargspec
+from inspect import getfullargspec, formatargspec, getcallargs
 
 loop = asyncio.get_event_loop()
 loop.add_signal_handler(signal.SIGINT, loop.stop)
@@ -21,6 +21,7 @@ __all__ = (
     'Connection',
     'Transaction',
     'RedisException',
+    'StatusReply',
     'MultiBulkReply',
 )
 __author__ = 'Jonathan Slenders'
@@ -29,9 +30,25 @@ __doc__ = \
 Redis protocol implementation for asyncio (PEP 3156)
 """
 
+NoneType = type(None)
+SetType = set
 
 class RedisException(Exception):
     pass
+
+class StatusReply:
+    """
+    Wrapper for Redis status replies.
+    (for messages like OK, QUEUED, etc...)
+    """
+    def __init__(self, status):
+        self.status = status
+
+    def __repr__(self):
+        return 'StatusReply(status=%r)' % self.status
+
+    def __eq__(self, other):
+        return self.status == other.status
 
 
 class MultiBulkReply(object):
@@ -96,8 +113,31 @@ class _PostProcessor:
 _all_commands = []
 
 def _command(method):
+    """
+    Wrapper for all redis commands.
+    This will also keep track of all the available commands and do type
+    checking.
+    """
     # Register command.
     _all_commands.append(method.__name__)
+
+    # Read specs
+    specs = getfullargspec(method)
+    return_type = specs.annotations.get('return', None)
+    params = { k:v for k, v in specs.annotations.items() if k != 'return' }
+
+    def typecheck_input(*a, **kw):
+        if params:
+            for name, value in getcallargs(method, None, *a, **kw).items():
+                if name in params and not isinstance(value, params[name]):
+                    raise TypeError('%s received %r, expected %r' %
+                                    (method.__name__, type(value), params[name]))
+
+    def typecheck_return(result):
+        if return_type:
+            if not isinstance(result, return_type):
+                raise TypeError('Got unexpected return type %r in %s, expected %r' %
+                                (type(result), method.__name__, return_type))
 
     # Wrap it into a check which allows this command to be run either directly
     # on the protocol, outside of transactions or from the transaction object.
@@ -107,14 +147,53 @@ def _command(method):
         if self.in_transaction and (len(a) == 0 or a[0] != self._transaction):
             raise RedisException('Cannot run command inside transaction')
         elif self.in_transaction:
-            return method(self, *a[1:], **kw)
+            # In case of a transaction, we receive a Future
+            typecheck_input(*a[1:], **kw)
+            future = yield from method(self, *a[1:], **kw)
+
+            # Typecheck the future when the result is available.
+            @future.add_done_callback
+            def callback(result):
+                typecheck_return(result.result())
+
+            return future
         else:
-            return method(self, *a, **kw)
+            typecheck_input(*a, **kw)
+            result = yield from method(self, *a, **kw)
+            typecheck_return(result)
+            return result
 
     # Append the real signature as the first line in the docstring.
-    #
-    signature = formatargspec(* getfullargspec(method))
-    wrapper.__doc__ = '%s%s\n%s' % (method.__name__, signature, method.__doc__)
+    # (This will make the sphinx docs show the real signature instead of
+    # (*a, **kw) of the wrapper.)
+    # (But don't put the anotations inside the copied signature, that's rather
+    # ugly in the docs.)
+    signature = formatargspec(* specs[:6])
+
+    # Use function annotations to generate param documentation.
+
+    def get_name(type):
+        if type == MultiBulkReply:
+            return ":class:`asyncio_redis.MultiBulkReply`"
+        elif type == StatusReply:
+            return ":class:`asyncio_redis.StatusReply`"
+        if isinstance(type, tuple):
+            return ' or '.join("``%s``" % t.__name__ for t in type)
+        else:
+            return "``%s``" % type.__name__
+
+    def get_param(k, v):
+        return ':param %s: %s\n' % (k, get_name(v))
+
+    params_str = [ get_param(k, v) for k, v in params.items() ]
+    returns = ':returns: (Future of) %s\n' % get_name(return_type) if return_type else ''
+
+    wrapper.__doc__ = '%s%s\n%s\n\n%s%s' % (
+            method.__name__, signature,
+            method.__doc__,
+            ''.join(params_str),
+            returns
+            )
 
     return wrapper
 
@@ -186,26 +265,21 @@ class RedisProtocol(asyncio.Protocol):
             else:
                 self._handle_bulk_reply_part(line)
 
-    def _encode(self, data):
+    def _encode(self, data:str) -> bytes:
         """ Encodes unicode data to bytes. """
         return data.encode(self.encoding)
 
-    def _encode_int(self, value):
+    def _encode_int(self, value:int) -> bytes:
         """ Encodes an integer to bytes. """
-        assert isinstance(value, int)
         return str(value).encode('ascii')
 
-    def _encode_float(self, value):
+    def _encode_float(self, value:float) -> str:
         """ Encodes a float to bytes. """
-        assert isinstance(value, float)
         return str(value).encode('ascii')
 
-    def _decode(self, data):
+    def _decode(self, data:bytes) -> str:
         """ Decodes bytes to unicode. """
-        try:
-            return data.decode(self.encoding)
-        except:
-            import pdb; pdb.set_trace()
+        return data.decode(self.encoding)
 
     def _line_received(self, line):
 #        print ('line received', line)
@@ -267,7 +341,7 @@ class RedisProtocol(asyncio.Protocol):
     # Handle replies
 
     def _handle_status_reply(self, line):
-        self._push_answer(line)
+        self._push_answer(StatusReply(line.decode('ascii')))
 
     def _handle_int_reply(self, line):
         self._push_answer(int(line))
@@ -364,7 +438,7 @@ class RedisProtocol(asyncio.Protocol):
 
         if self._in_transaction and not _bypass:
             # When the connection is inside a transaction, the query will be queued.
-            if result != b'QUEUED':
+            if result != StatusReply('QUEUED'):
                 raise RedisException('Expected to receive QUEUED for query in transaction, received %r.' % result)
 
             # Return a future which will contain the result when it arrives.
@@ -391,7 +465,7 @@ class RedisProtocol(asyncio.Protocol):
 
     @asyncio.coroutine
     def _query(self, *args, _bypass=False, post_process_func=None, set_blocking=False):
-        """ Wrapper around both _send_command and _get_answer.  """
+        """ Wrapper around both _send_command and _get_answer. """
         call = PipelinedCall(args[0], set_blocking)
         self._pipelined_calls.add(call)
 
@@ -400,7 +474,6 @@ class RedisProtocol(asyncio.Protocol):
 
         # Receive answer.
         result = yield from self._get_answer(_bypass=_bypass, post_process_func=post_process_func, call=call)
-
         return result
 
     # Internal
@@ -408,121 +481,117 @@ class RedisProtocol(asyncio.Protocol):
     def _auth(self, password):
         return self._query(b'auth', self._encode(password))
 
-    def _select(self, db):
-        assert isinstance(db, int)
+    def _select(self, db:int):
         return self._query(b'select', self._encode_int(db))
 
     # Strings
 
     @_command
-    def set(self, key, value):
+    def set(self, key:str, value:str) -> StatusReply:
         """ Set the string value of a key """
         return self._query(b'set', self._encode(key), self._encode(value))
 
     @_command
-    def get(self, key):
+    def get(self, key:str) -> (str, NoneType):
         """ Get the value of a key """
         return self._query(b'get', self._encode(key))
 
     @_command
-    def mget(self, *keys):
+    def mget(self, *keys) -> list:
         """ Returns the values of all specified keys. """
         return self._query(b'mget', *map(self._encode, keys),
                 post_process_func=_PostProcessor.multibulk_as_list)
 
     @_command
-    def strlen(self, key):
+    def strlen(self, key:str) -> int:
         """ Returns the length of the string value stored at key. An error is
         returned when key holds a non-string value.  """
         return self._query(b'strlen', self._encode(key))
 
     @_command
-    def append(self, key, value):
+    def append(self, key:str, value:str) -> int:
         """ Append a value to a key """
         return self._query(b'append', self._encode(key), self._encode(value))
 
     @_command
-    def getset(self, key, value):
+    def getset(self, key:str, value:str):
         """ Set the string value of a key and return its old value """
         return self._query(b'getset', self._encode(key), self._encode(value))
 
     @_command
-    def incr(self, key):
+    def incr(self, key:str) -> int:
         """ Increment the integer value of a key by one """
         return self._query(b'incr', self._encode(key))
 
     @_command
-    def incrby(self, key, increment):
+    def incrby(self, key:str, increment:int) -> int:
         """ Increment the integer value of a key by the given amount """
-        assert isinstance(increment, int)
         return self._query(b'incrby', self._encode(key), self._encode_int(increment))
 
     @_command
-    def decr(self, key):
+    def decr(self, key:str) -> int:
         """ Decrement the integer value of a key by one """
         return self._query(b'decr', self._encode(key))
 
     @_command
-    def decrby(self, key, increment):
+    def decrby(self, key:str, increment:int) -> int:
         """ Decrement the integer value of a key by the given number """
-        assert isinstance(increment, int)
         return self._query(b'decrby', self._encode(key), self._encode_int(increment))
 
     @_command
-    def randomkey(self):
+    def randomkey(self) -> str:
         """ Return a random key from the keyspace """
         return self._query(b'randomkey')
 
     @_command
-    def exists(self, key):
+    def exists(self, key:str) -> bool:
         """ Determine if a key exists """
         return self._query(b'exists', self._encode(key),
                 post_process_func=_PostProcessor.int_to_bool)
 
     @_command
-    def delete(self, *keys):
+    def delete(self, *keys) -> int:
         """ Delete a key """
         return self._query(b'del', *map(self._encode, keys))
 
     @_command
-    def move(self, key, database):
+    def move(self, key:str, database:int) -> int:
         """ Move a key to another database """
-        assert isinstance(database, int)
         return self._query(b'move', self._encode(key), self._encode(destination)) # TODO: test
 
     @_command
-    def rename(self, key, newkey):
+    def rename(self, key:str, newkey:str) -> StatusReply:
         """ Rename a key """
         return self._query(b'rename', self._encode(key), self._encode(newkey))
 
     @_command
-    def renamenx(self, key, newkey):
+    def renamenx(self, key:str, newkey:str) -> int:
         """ Rename a key, only if the new key does not exist
         (Returns 1 if the key was successfully renamed.) """
         return self._query(b'renamenx', self._encode(key), self._encode(newkey))
 
     @_command
-    def getbit(self, key, offset):
+    def getbit(self, key:str, offset):
         """ Returns the bit value at offset in the string value stored at key """
         raise NotImplementedError
 
     @_command
-    def bitop_and(self, destkey, *srckeys): # XXX: unittest
+    def bitop_and(self, destkey:str, *srckeys): # XXX: unittest
         """ Perform a bitwise AND operation between multiple keys. """
         return self._bitop(b'and', destkey, *srckeys)
 
     @_command
-    def bitop_or(self, destkey, *srckeys): # XXX: unittest
+    def bitop_or(self, destkey:str, *srckeys): # XXX: unittest
         """ Perform a bitwise OR operation between multiple keys. """
         return self._bitop(b'or', destkey, *srckeys)
 
     @_command
-    def bitop_xor(self, destkey, *srckeys): # XXX: unittest
+    def bitop_xor(self, destkey:str, *srckeys): # XXX: unittest
         """ Perform a bitwise XOR operation between multiple keys. """
         return self._bitop(b'xor', destkey, *srckeys)
 
     @_command
-    def bitop_xor(self, destkey, *srckeys): # XXX: unittest
+    def bitop_xor(self, destkey:str, *srckeys): # XXX: unittest
         """ Perform a bitwise NOT operation between multiple keys. """
         return self._bitop(b'not', destkey, *srckeys)
 
@@ -537,222 +606,208 @@ class RedisProtocol(asyncio.Protocol):
     # Keys
 
     @_command
-    def keys(self, pattern):
+    def keys(self, pattern:str) -> MultiBulkReply:
         """
         Find all keys matching the given pattern.
-
-        :returns: A :class:`asyncio_redis.MultiBulkReply` object.
         """
         return self._query(b'keys', self._encode(pattern))
 
     @_command
-    def dump(self, key):
+    def dump(self, key:str):
         """ Return a serialized version of the value stored at the specified key. """
         # Dump does not work yet. It shouldn't be decoded using utf-8'
         raise NotImplementedError('Not supported.')
 
     @_command
-    def expire(self, key, seconds):
+    def expire(self, key:str, seconds:int) -> int:
         """ Set a key's time to live in seconds """
-        assert isinstance(seconds, int)
         return self._query(b'expire', self._encode(key), self._encode_int(seconds))
 
     @_command
-    def pexpire(self, key, milliseconds):
+    def pexpire(self, key:str, milliseconds:int) -> int:
         """ Set a key's time to live in milliseconds """
-        assert isinstance(milliseconds, int)
         return self._query(b'pexpire', self._encode(key), self._encode_int(milliseconds))
 
     @_command
-    def expireat(self, key, timestamp):
+    def expireat(self, key:str, timestamp:int) -> int:
         """ Set the expiration for a key as a UNIX timestamp """
-        assert isinstance(timestamp, int)
         return self._query(b'expireat', self._encode(key), self._encode_int(timestamp))
 
     @_command
-    def pexpireat(self, key, milliseconds_timestamp):
+    def pexpireat(self, key:str, milliseconds_timestamp:int) -> int:
         """ Set the expiration for a key as a UNIX timestamp specified in milliseconds """
-        assert isinstance(milliseconds_timestamp, int)
         return self._query(b'pexpireat', self._encode(key), self._encode_int(milliseconds_timestamp))
 
     @_command
-    def persist(self, key):
+    def persist(self, key:str) -> int:
         """ Remove the expiration from a key """
         return self._query(b'persist', self._encode(key))
 
     @_command
-    def ttl(self, key):
+    def ttl(self, key:str) -> int:
         """ Get the time to live for a key """
         return self._query(b'ttl', self._encode(key))
 
     @_command
-    def pttl(self, key):
+    def pttl(self, key:str) -> int:
         """ Get the time to live for a key in milliseconds """
         return self._query(b'pttl', self._encode(key))
 
     # Set operations
 
     @_command
-    def sadd(self, key, *members):
+    def sadd(self, key:str, *members) -> int:
         """ Add one or more members to a set """
         return self._query(b'sadd', self._encode(key), *map(self._encode, members))
 
     @_command
-    def srem(self, key, *members):
+    def srem(self, key:str, *members) -> int:
         """ Remove one or more members from a set """
         return self._query(b'srem', self._encode(key), *map(self._encode, members))
 
     @_command
-    def spop(self, key):
+    def spop(self, key:str) -> str:
         """ Removes and returns a random element from the set value stored at key. """
         return self._query(b'spop', self._encode(key))
 
     @_command
-    def srandmember(self, key, count=1):
+    def srandmember(self, key:str, count:int=1) -> list:
         """ Get one or multiple random members from a set
         (Returns a list of members, even when count==1)
         """
-        assert isinstance(count, int)
         return self._query(b'srandmember', self._encode(key), self._encode_int(count),
                 post_process_func=_PostProcessor.multibulk_as_list)
 
     @_command
-    def sismember(self, key, value):
+    def sismember(self, key:str, value:str) -> bool:
         """ Determine if a given value is a member of a set """
         return self._query(b'sismember', self._encode(key), self._encode(value),
                 post_process_func=_PostProcessor.int_to_bool)
 
     @_command
-    def scard(self, key):
+    def scard(self, key:str) -> int:
         """ Get the number of members in a set """
         return self._query(b'scard', self._encode(key))
 
     @_command
-    def smembers(self, key):
+    def smembers(self, key:str) -> SetType:
         """ Get all the members in a set """
         return self._query(b'smembers', self._encode(key),
                 post_process_func=_PostProcessor.multibulk_as_set)
 
     @_command
-    def sinter(self, *keys):
+    def sinter(self, *keys) -> SetType:
         """ Intersect multiple sets """
         return self._query(b'sinter', *map(self._encode, keys),
                 post_process_func=_PostProcessor.multibulk_as_set)
 
     @_command
-    def sinterstore(self, destination, *keys):
+    def sinterstore(self, destination:str, *keys) -> int:
         """ Intersect multiple sets and store the resulting set in a key """
         return self._query(b'sinterstore', self._encode(destination), *map(self._encode, keys))
 
     @_command
-    def sdiff(self, key, *keys):
+    def sdiff(self, key:str, *keys) -> SetType:
         """ Subtract multiple sets """
         return self._query(b'sdiff', self._encode(key), *map(self._encode, keys),
                 post_process_func=_PostProcessor.multibulk_as_set)
 
     @_command
-    def sdiffstore(self, destination, *keys):
+    def sdiffstore(self, destination:str, *keys) -> int:
         """ Subtract multiple sets and store the resulting set in a key """
         return self._query(b'sdiffstore', self._encode(destination), *map(self._encode, keys))
 
     @_command
-    def sunion(self, *keys):
+    def sunion(self, *keys) -> SetType:
         """ Add multiple sets """
         return self._query(b'sunion', *map(self._encode, keys),
                 post_process_func=_PostProcessor.multibulk_as_set)
 
     @_command
-    def sunionstore(self, destination, *keys):
+    def sunionstore(self, destination:str, *keys) -> int:
         """ Add multiple sets and store the resulting set in a key """
         return self._query(b'sunionstore', self._encode(destination), *map(self._encode, keys))
 
     @_command
-    def smove(self, source, destination, value):
+    def smove(self, source:str, destination:str, value:str) -> int:
         """ Move a member from one set to another """
         return self._query(b'smove', self._encode(source), self._encode(destination), self._encode(value))
 
     # List operations
 
     @_command
-    def lpush(self, key, *values):
+    def lpush(self, key:str, *values) -> int:
         """ Prepend one or multiple values to a list """
         return self._query(b'lpush', self._encode(key), *map(self._encode, values))
 
     @_command
-    def lpushx(self, key, value):
+    def lpushx(self, key:str, value:str) -> int:
         """ Prepend a value to a list, only if the list exists """
         return self._query(b'lpushx', self._encode(key), self._encode(value))
 
     @_command
-    def rpush(self, key, *values):
+    def rpush(self, key:str, *values) -> int:
         """ Append one or multiple values to a list """
         return self._query(b'rpush', self._encode(key), *map(self._encode, values))
 
     @_command
-    def rpushx(self, key, value):
+    def rpushx(self, key:str, value:str) -> int:
         """ Append a value to a list, only if the list exists """
         return self._query(b'rpushx', self._encode(key), self._encode(value))
 
     @_command
-    def llen(self, key):
+    def llen(self, key:str) -> int:
         """ Returns the length of the list stored at key. """
         return self._query(b'llen', self._encode(key))
 
     @_command
-    def lrem(self, key, count=0, value=''):
+    def lrem(self, key:str, count:int=0, value='') -> int:
         """ Remove elements from a list """
-        assert isinstance(count, int)
         return self._query(b'lrem', self._encode(key), self._encode_int(count), self._encode(value))
 
     @_command
-    def lrange(self, key, start=0, stop=-1):
+    def lrange(self, key, start:int=0, stop:int=-1) -> list:
         """ Get a range of elements from a list. """
-        assert isinstance(start, int)
-        assert isinstance(stop, int)
-
         return self._query(b'lrange', self._encode(key), self._encode_int(start), self._encode_int(stop),
                 post_process_func=_PostProcessor.multibulk_as_list)
 
     @_command
-    def ltrim(self, key, start=0, stop=-1):
+    def ltrim(self, key:str, start:int=0, stop:int=-1) -> StatusReply:
         """ Trim a list to the specified range """
-        assert isinstance(start, int)
-        assert isinstance(stop, int)
         return self._query(b'ltrim', self._encode(key), self._encode_int(start), self._encode_int(stop))
 
     @_command
-    def lpop(self, key):
+    def lpop(self, key:str) -> (str, NoneType):
         """ Remove and get the first element in a list """
         return self._query(b'lpop', self._encode(key))
 
     @_command
-    def rpop(self, key):
+    def rpop(self, key:str) -> (str, NoneType):
         """ Remove and get the last element in a list """
         return self._query(b'rpop', self._encode(key))
 
     @_command
-    def rpoplpush(self, source, destination):
+    def rpoplpush(self, source:str, destination:str) -> str:
         """ Remove the last element in a list, append it to another list and return it """
         return self._query(b'rpoplpush', self._encode(source), self._encode(destination))
 
     @_command
-    def lindex(self, key, index):
+    def lindex(self, key:str, index:int) -> (str, NoneType):
         """ Get an element from a list by its index """
-        assert isinstance(index, int)
         return self._query(b'lindex', self._encode(key), self._encode_int(index))
 
     @_command
-    def blpop(self, *keys, timeout=0):
+    def blpop(self, *keys, timeout:int=0) -> list: # TODO: Returns (list_name, value) -> is that the best way?
         """ Remove and get the first element in a list, or block until one is available. """
         return self._blocking_pop(*keys, timeout=timeout, right=False)
 
     @_command
-    def brpop(self, *keys, timeout=0):
+    def brpop(self, *keys, timeout:int=0) -> list: # TODO: Returns (list_name, value) -> is that the best way?
         """ Remove and get the last element in a list, or block until one is available. """
         return self._blocking_pop(*keys, timeout=timeout, right=True)
 
     @_command
-    def brpoplpush(self, source, destination, timeout=0):
+    def brpoplpush(self, source:str, destination:str, timeout:int=0) -> str:
         """ Pop a value from a list, push it to another list and return it; or block until one is available """
         return self._query(b'brpoplpush', self._encode(source), self._encode(destination),
                     self._encode_int(timeout), set_blocking=True)
@@ -763,26 +818,46 @@ class RedisProtocol(asyncio.Protocol):
                 post_process_func=_PostProcessor.multibulk_as_list, set_blocking=True)
 
     @_command
-    def lset(self, key, index, value):
+    def lset(self, key:str, index:int, value:str) -> StatusReply:
         """ Set the value of an element in a list by its index. """
-        assert isinstance(index, int)
         return self._query(b'lset', self._encode(key), self._encode_int(index), self._encode(value))
 
     @_command
-    def linsert(self, key, pivot, value, before=False):
+    def linsert(self, key:str, pivot:str, value:str, before=False) -> int:
         """ Insert an element before or after another element in a list """
         return self._query(b'linsert', self._encode(key), (b'BEFORE' if before else b'AFTER'),
                 self._encode(pivot), self._encode(value))
 
+    # Sorted Sets
+    @_command
+    def zadd(self, key, **values): # XXX: TODO: test it
+        """
+        Add one or more members to a sorted set, or update its score if it already exists
+
+        ::
+
+            yield protocol.zadd('myzset', key=4, key2=5)
+            yield protocol.zadd('myzset', **{ 'key': 4, 'key2': 5 })
+        """
+        data = [ ]
+        for k,score in values.items():
+            assert isinstance(k, str)
+            assert isinstance(score, float)
+
+            data.append(self._encode(score))
+            data.append(self._encode(k))
+
+        return self._query(b'zadd', self._encode(key), *data)
+
     # Hashes
 
     @_command
-    def hset(self, key, field, value):
+    def hset(self, key:str, field:str, value:str) -> int:
         """ Set the string value of a hash field """
         return self._query(b'hset', self._encode(key), self._encode(field), self._encode(value))
 
     @_command
-    def hmset(self, key, **values):
+    def hmset(self, key:str, **values) -> StatusReply:
         """ Set multiple hash fields to multiple values """
         data = [ ]
         for k,v in values.items():
@@ -795,45 +870,45 @@ class RedisProtocol(asyncio.Protocol):
         return self._query(b'hmset', self._encode(key), *data)
 
     @_command
-    def hsetnx(self, key, field, value):
+    def hsetnx(self, key:str, field:str, value:str) -> int:
         """ Set the value of a hash field, only if the field does not exist """
         return self._query(b'hsetnx', self._encode(key), self._encode(field), self._encode(value))
 
     @_command
-    def hdel(self, key, *fields):
+    def hdel(self, key:str, *fields) -> int:
         """ Delete one or more hash fields """
         return self._query(b'hdel', self._encode(key), *map(self._encode, fields))
 
     @_command
-    def hget(self, key, field):
+    def hget(self, key:str, field:str) -> (str, NoneType):
         """ Get the value of a hash field """
         return self._query(b'hget', self._encode(key), self._encode(field))
 
     @_command
-    def hexists(self, key, field):
+    def hexists(self, key:str, field:str) -> bool:
         """ Returns if field is an existing field in the hash stored at key. """
         return self._query(b'hexists', self._encode(key), self._encode(field),
                 post_process_func=_PostProcessor.int_to_bool)
 
     @_command
-    def hkeys(self, key):
+    def hkeys(self, key:str) -> SetType:
         """ Get all the keys in a hash. (Returns a set) """
         return self._query(b'hkeys', self._encode(key),
                 post_process_func=_PostProcessor.multibulk_as_set)
 
     @_command
-    def hvals(self, key):
+    def hvals(self, key:str) -> list:
         """ Get all the values in a hash. (Returns a list) """
         return self._query(b'hvals', self._encode(key),
                 post_process_func=_PostProcessor.multibulk_as_list)
 
     @_command
-    def hlen(self, key):
+    def hlen(self, key:str) -> int:
         """ Returns the number of fields contained in the hash stored at key. """
         return self._query(b'hlen', self._encode(key))
 
     @_command
-    def hgetall(self, key):
+    def hgetall(self, key:str) -> dict:
         """ Get the value of a hash field """
         @asyncio.coroutine
         def post(multibulk):
@@ -843,24 +918,22 @@ class RedisProtocol(asyncio.Protocol):
         return self._query(b'hgetall', self._encode(key), post_process_func=post)
 
     @_command
-    def hmget(self, key, *fields):
+    def hmget(self, key:str, *fields) -> list:
         """ Get the values of all the given hash fields """
         return self._query(b'hmget', self._encode(key), *map(self._encode, fields),
                 post_process_func=_PostProcessor.multibulk_as_list)
 
     @_command
-    def hincrby(self, key, field, increment):
+    def hincrby(self, key:str, field:str, increment) -> int:
         """ Increment the integer value of a hash field by the given number
         Returns: the value at field after the increment operation. """
         assert isinstance(increment, int)
         return self._query(b'hincrby', self._encode(key), self._encode(field), self._encode_int(increment))
 
     @_command
-    def hincrbyfloat(self, key, field, increment):
+    def hincrbyfloat(self, key:str, field:str, increment:(int,float)) -> float:
         """ Increment the float value of a hash field by the given amount
         Returns: the value at field after the increment operation. """
-        assert isinstance(increment, (int, float))
-
         @asyncio.coroutine
         def post(result):
             assert isinstance(result, str)
@@ -873,7 +946,7 @@ class RedisProtocol(asyncio.Protocol):
 
     @_command
     @asyncio.coroutine
-    def subscribe(self, *channels):
+    def subscribe(self, *channels) -> list: # TODO: wrap result in SubscribeReply
         """ Listen for messages published to the given channels """
         if self.in_transaction:
             raise RedisException('Cannot call subscribe inside a transaction.')
@@ -895,49 +968,50 @@ class RedisProtocol(asyncio.Protocol):
         return self._messages_queue.get()
 
     @_command
-    def publish(self, channel, message):
-        """ Post a message to a channel """
+    def publish(self, channel:str, message:str) -> int:
+        """ Post a message to a channel
+        (Returns the number of clients that received this message.) """
         return self._query(b'publish', self._encode(channel), self._encode(message))
 
     # Server
 
     @_command
-    def ping(self):
+    def ping(self) -> StatusReply:
         """ Ping the server (Returns PONG) """
         return self._query(b'ping')
 
     @_command
-    def echo(self, string):
+    def echo(self, string:str) -> str:
         """ Echo the given string """
         return self._query(b'echo', self._encode(string))
 
     @_command
-    def save(self):
+    def save(self) -> StatusReply:
         """ Synchronously save the dataset to disk """
         return self._query(b'save')
 
     @_command
-    def bgsave(self):
+    def bgsave(self) -> StatusReply:
         """ Asynchronously save the dataset to disk """
         return self._query(b'bgsave')
 
     @_command
-    def lastsave(self):
+    def lastsave(self) -> int:
         """ Get the UNIX time stamp of the last successful save to disk """
         return self._query(b'lastsave')
 
     @_command
-    def dbsize(self):
+    def dbsize(self) -> int:
         """ Return the number of keys in the currently-selected database. """
         return self._query(b'dbsize')
 
     @_command
-    def flushall(self):
+    def flushall(self) -> StatusReply:
         """ Remove all keys from all databases """
         return self._query(b'flushall')
 
     @_command
-    def flushdb(self):
+    def flushdb(self) -> StatusReply:
         """ Delete all the keys of the currently selected DB. This command never fails. """
         return self._query(b'flushdb')
 
@@ -947,7 +1021,7 @@ class RedisProtocol(asyncio.Protocol):
         raise NotImplementedError
 
     @_command
-    def type(self, key):
+    def type(self, key:str) -> StatusReply:
         """ Determine the type stored at key """
         return self._query(b'type', self._encode(key))
 
@@ -955,7 +1029,7 @@ class RedisProtocol(asyncio.Protocol):
 
     @_command
     @asyncio.coroutine
-    def multi(self, keys=None):
+    def multi(self, keys:(list,NoneType)=None):
         """
         Start of transaction.
 
@@ -976,7 +1050,7 @@ class RedisProtocol(asyncio.Protocol):
 
         :returns: A :class:`asyncio_redis.Transaction` instance.
         """
-        assert isinstance(keys, list) or keys is None # TODO: implement watch
+#        assert isinstance(keys, list) or keys is None # TODO: implement watch
 
         if (self._in_transaction):
             raise RedisException('Multi calls can not be nested.')
@@ -985,11 +1059,11 @@ class RedisProtocol(asyncio.Protocol):
         if keys is not None:
             for k in keys:
                 result = yield from self._query(b'watch', self._encode(k)) # XXX: unittest
-                assert result == b'OK'
+                assert result == StatusReply('OK')
 
         # Call multi
         result = yield from self._query(b'multi')
-        assert result == b'OK'
+        assert result == StatusReply('OK')
 
         self._in_transaction = True
         self._transaction_response_queue = deque()
@@ -1047,7 +1121,7 @@ class RedisProtocol(asyncio.Protocol):
         self._in_transaction = False
         self._transaction = None
         result = yield from self._query(b'discard')
-        assert result == b'OK'
+        assert result == StatusReply('OK')
 
     @asyncio.coroutine
     def _unwatch(self):
@@ -1058,7 +1132,8 @@ class RedisProtocol(asyncio.Protocol):
             raise RedisException('Not in transaction')
 
         result = yield from self._query(b'unwatch')
-        assert result == b'OK'
+        assert result == StatusReply('OK')
+
 
 class Connection:
     """

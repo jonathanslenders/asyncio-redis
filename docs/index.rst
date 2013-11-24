@@ -48,6 +48,9 @@ Example
     if __name__ == '__main__':
         asyncio.get_event_loop().run_until_complete(run())
 
+See :ref:`the reference <redis-reference>` to learn more about how to call other
+Redis commands.
+
 
 Transaction example
 -------------------
@@ -80,7 +83,11 @@ Transaction example
 Reference
 ---------
 
-:ref:`View reference <redis-reference>`
+:ref:`View the reference with all commands <redis-reference>`
+
+View `the source code at GitHub`_
+
+.. _the source code at GitHub: https://github.com/jonathanslenders/asyncio-redis
 
 
 Indices and tables

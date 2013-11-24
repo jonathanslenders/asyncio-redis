@@ -3,7 +3,7 @@ from asyncio.futures import Future
 from asyncio.protocols import SubprocessProtocol
 from asyncio.tasks import gather
 
-from asyncio_redis import RedisProtocol, Connection, Transaction, RedisException
+from asyncio_redis import RedisProtocol, Connection, Transaction, RedisException, StatusReply
 from threading import Thread
 from time import sleep
 
@@ -47,7 +47,7 @@ class RedisProtocolTest(unittest.TestCase):
     @redis_test
     def test_ping(self, transport, protocol):
         result = yield from protocol.ping()
-        self.assertEqual(result, b'PONG')
+        self.assertEqual(result, StatusReply('PONG'))
 
     @redis_test
     def test_echo(self, transport, protocol):
@@ -58,7 +58,7 @@ class RedisProtocolTest(unittest.TestCase):
     def test_set_and_get(self, transport, protocol):
         # Set
         value = yield from protocol.set(u'my_key', u'my_value')
-        self.assertEqual(value, b'OK')
+        self.assertEqual(value, StatusReply('OK'))
 
         # Get
         value = yield from protocol.get(u'my_key')
@@ -138,7 +138,7 @@ class RedisProtocolTest(unittest.TestCase):
 
         # Rename
         value = yield from protocol.rename(u'old_key', u'new_key')
-        self.assertEqual(value, b'OK')
+        self.assertEqual(value, StatusReply('OK'))
 
         value = yield from protocol.exists(u'old_key')
         self.assertEqual(value, False)
@@ -308,13 +308,13 @@ class RedisProtocolTest(unittest.TestCase):
 
         # Test types
         value = yield from protocol.type(u'key1')
-        self.assertEqual(value, b'string')
+        self.assertEqual(value, StatusReply('string'))
 
         value = yield from protocol.type(u'key2')
-        self.assertEqual(value, b'list')
+        self.assertEqual(value, StatusReply('list'))
 
         value = yield from protocol.type(u'key3')
-        self.assertEqual(value, b'set')
+        self.assertEqual(value, StatusReply('set'))
 
     @redis_test
     def test_list(self, transport, protocol):
@@ -330,7 +330,7 @@ class RedisProtocolTest(unittest.TestCase):
 
         # lset
         value = yield from protocol.lset(u'my_list', 3, 'new-value')
-        self.assertEqual(value, b'OK')
+        self.assertEqual(value, StatusReply('OK'))
 
         value = yield from protocol.lrange(u'my_list')
         self.assertEqual(value, [ u'v2', 'v1', 'v3', 'new-value'])
@@ -338,6 +338,8 @@ class RedisProtocolTest(unittest.TestCase):
         # lindex
         value = yield from protocol.lindex(u'my_list', 1)
         self.assertEqual(value, 'v1')
+        value = yield from protocol.lindex(u'my_list', 10) # Unknown index
+        self.assertEqual(value, None)
 
         # Length
         value = yield from protocol.llen(u'my_list')
@@ -465,7 +467,7 @@ class RedisProtocolTest(unittest.TestCase):
         yield from protocol.lpush(u'my_list', u'a')
         yield from protocol.lpush(u'my_list', u'b')
         result = yield from protocol.ltrim(u'my_list')
-        self.assertEqual(result, b'OK')
+        self.assertEqual(result, StatusReply('OK'))
 
     @redis_test
     def test_hashes(self, transport, protocol):
@@ -490,6 +492,8 @@ class RedisProtocolTest(unittest.TestCase):
         # Get from hash
         result = yield from protocol.hget(u'my_hash', u'key2')
         self.assertEqual(result, u'value2')
+        result = yield from protocol.hget(u'my_hash', u'unknown-key')
+        self.assertEqual(result, None)
 
         result = yield from protocol.hgetall(u'my_hash')
         self.assertEqual(result, {u'key': u'value', u'key2': u'value2' })
@@ -534,7 +538,7 @@ class RedisProtocolTest(unittest.TestCase):
 
         # HMSet
         result = yield from protocol.hmset(u'my_hash', b='2', c='3')
-        self.assertEqual(result, b'OK')
+        self.assertEqual(result, StatusReply('OK'))
 
         # HMGet
         result = yield from protocol.hmget(u'my_hash', u'a', u'b', u'c')

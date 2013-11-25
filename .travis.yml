@@ -3,8 +3,13 @@ language: python
 python:
   - "3.3"
 
+before_install:
+  - sudo apt-get install redis-server
+  - sudo service redis-server start
+  - /bin/sleep 10
+
 install:
   - "pip install . --use-mirrors"
 
 script:
-  - ./tests.py
+  - REDIS_PORT=6379 ./tests.py

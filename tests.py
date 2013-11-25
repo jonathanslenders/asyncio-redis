@@ -12,8 +12,9 @@ from time import sleep
 import asyncio
 import subprocess
 import unittest
+import os
 
-PORT = 9999
+PORT = int(os.environ['REDIS_PORT'])
 
 
 @asyncio.coroutine

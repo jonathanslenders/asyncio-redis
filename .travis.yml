@@ -1,0 +1,10 @@
+language: python
+
+python:
+  - "3.3"
+
+install:
+  - "pip install . --use-mirrors"
+
+script:
+  - ./tests.py

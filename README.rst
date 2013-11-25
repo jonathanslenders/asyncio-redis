@@ -1,6 +1,8 @@
 Redis client for PEP3156 asyncio (tulip)
 ========================================
 
+|Build Status|
+
 Features
 --------
 
@@ -109,3 +111,7 @@ Example:
 
 It's recommended to use a large enough poolsize. A connection will be occupied
 as long as there's a transaction running in there.
+
+
+.. |Build Status| image:: https://travis-ci.org/jonathanslenders/asyncio-redis.png
+    :target: https://travis-ci.org/jonathanslenders/asyncio-redis#

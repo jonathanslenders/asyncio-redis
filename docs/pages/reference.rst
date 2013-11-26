@@ -24,5 +24,11 @@ wrapper which also offers connection pooling.
 .. autoclass:: asyncio_redis.MultiBulkReply
     :members:
 
+.. autoclass:: asyncio_redis.ZRangeResult
+    :members:
+
+.. autoclass:: asyncio_redis.ZScoreBoundary
+    :members:
+
 .. autoclass:: asyncio_redis.Transaction
     :members:

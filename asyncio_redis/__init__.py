@@ -51,7 +51,7 @@ class StatusReply:
         return self.status == other.status
 
 
-class MultiBulkReply(object):
+class MultiBulkReply:
     """
     Container for a multi bulk reply.
     There are two ways of retrieving the content:
@@ -75,13 +75,67 @@ class MultiBulkReply(object):
         for i in range(self.count):
             yield self.queue.get()
 
-    @asyncio.coroutine
     def get_as_list(self):
         """
         Wait for all of the items of the multibulk reply to come in.
         and return it as a list.
         """
-        return [ (yield from f) for f in self ]
+        return gather(*list(self))
+
+class ZRangeResult:
+    """
+    Container for a zrange query result.
+    """
+    def __init__(self, multibulk_reply):
+        self._result = multibulk_reply
+
+    def __iter__(self):
+        """ Yield a list of futures that yield {key: score_as_float} tuples. """
+        i = iter(self._result)
+
+        @asyncio.coroutine
+        def getter(key_f, score_f):
+            """ Coroutine which processes one item. """
+            key, score = yield from gather(key_f, score_f)
+            return { key: float(score) }
+
+        while True:
+            yield asyncio.Task(getter(next(i), next(i)))
+
+    @asyncio.coroutine
+    def get_as_dict(self):
+        result = { }
+        for f in self:
+            result.update((yield from f))
+        return result
+
+    @asyncio.coroutine
+    def get_as_list(self):
+        result = []
+        for f in self:
+            result += (yield from f).keys()
+        return result
+
+
+class ZScoreBoundary:
+    """
+    Score boundary for a sorted set.
+    for queries like zrangebyscore and similar
+
+    :param value: Value for the boundary.
+    :param type: float
+    """
+    def __init__(self, value, exclude_boundary=False):
+        assert isinstance(value, float) or value in ('+inf', '-inf')
+        self.value = value
+        self.exclude_boundary = exclude_boundary
+
+    def __repr__(self):
+        return 'ZScoreBoundary(value=%r, exclude_boundary=%r)' % (
+                    self.value, self.exclude_boundary)
+
+ZScoreBoundary.MIN_VALUE = ZScoreBoundary('-inf')
+ZScoreBoundary.MAX_VALUE = ZScoreBoundary('+inf')
 
 
 class PipelinedCall:
@@ -107,6 +161,16 @@ class _PostProcessor:
     def int_to_bool(result):
         assert isinstance(result, int)
         return bool(result) # Convert int to bool
+
+    @asyncio.coroutine
+    def multibulk_as_zrangeresult(result):
+        assert isinstance(result, MultiBulkReply)
+        return ZRangeResult(result)
+
+    @asyncio.coroutine
+    def str_to_float(result):
+        assert isinstance(result, str)
+        return float(result)
 
 
 # List of all command methods.
@@ -177,6 +241,10 @@ def _command(method):
             return ":class:`asyncio_redis.MultiBulkReply`"
         elif type == StatusReply:
             return ":class:`asyncio_redis.StatusReply`"
+        elif type == ZRangeResult:
+            return ":class:`asyncio_redis.ZRangeResult`"
+        elif type == ZScoreBoundary:
+            return ":class:`asyncio_redis.ZScoreBoundary`"
         if isinstance(type, tuple):
             return ' or '.join("``%s``" % t.__name__ for t in type)
         else:
@@ -273,9 +341,17 @@ class RedisProtocol(asyncio.Protocol):
         """ Encodes an integer to bytes. """
         return str(value).encode('ascii')
 
-    def _encode_float(self, value:float) -> str:
+    def _encode_float(self, value:float) -> bytes:
         """ Encodes a float to bytes. """
         return str(value).encode('ascii')
+
+    def _encode_zscore_boundary(self, value:ZScoreBoundary) -> str:
+        if isinstance(value.value, str):
+            return self._encode(value.value) # +inf and -inf
+        elif value.exclude_boundary:
+            return self._encode("(%f" % value.value)
+        else:
+            return self._encode("%f" % value.value)
 
     def _decode(self, data:bytes) -> str:
         """ Decodes bytes to unicode. """
@@ -829,25 +905,124 @@ class RedisProtocol(asyncio.Protocol):
                 self._encode(pivot), self._encode(value))
 
     # Sorted Sets
+
     @_command
-    def zadd(self, key, **values): # XXX: TODO: test it
+    def zadd(self, key:str, values:dict) -> int:
         """
         Add one or more members to a sorted set, or update its score if it already exists
 
         ::
 
-            yield protocol.zadd('myzset', key=4, key2=5)
-            yield protocol.zadd('myzset', **{ 'key': 4, 'key2': 5 })
+            yield protocol.zadd('myzset', { 'key': 4, 'key2': 5 })
         """
         data = [ ]
         for k,score in values.items():
             assert isinstance(k, str)
-            assert isinstance(score, float)
+            assert isinstance(score, (int, float))
 
-            data.append(self._encode(score))
+            data.append(self._encode_float(score))
             data.append(self._encode(k))
 
         return self._query(b'zadd', self._encode(key), *data)
+
+    @_command
+    def zrange(self, key:str, start:int=0, stop:int=-1) -> ZRangeResult:
+        """
+        Return a range of members in a sorted set, by index.
+
+        You can do the following to receive the slice of the sorted set as a
+        python dict (mapping the keys to their scores):
+
+        ::
+
+            result = yield protocol.zrange('myzset', start=10, stop=20)
+            my_dict = yield result.get_as_dict()
+
+        or the following to retrieve it as a list of keys:
+
+        ::
+
+            result = yield protocol.zrange('myzset', start=10, stop=20)
+            my_dict = yield result.get_as_list()
+        """
+        return self._query(b'zrange', self._encode(key),
+                    self._encode_int(start), self._encode_int(stop), b'withscores',
+                    post_process_func=_PostProcessor.multibulk_as_zrangeresult)
+
+    @_command
+    def zrangebyscore(self, key:str,
+                min:ZScoreBoundary=ZScoreBoundary.MIN_VALUE,
+                max:ZScoreBoundary=ZScoreBoundary.MAX_VALUE) -> ZRangeResult:
+        """ Return a range of members in a sorted set, by score """
+        return self._query(b'zrangebyscore', self._encode(key),
+                    self._encode_zscore_boundary(min), self._encode_zscore_boundary(max),
+                    b'withscores',
+                    post_process_func=_PostProcessor.multibulk_as_zrangeresult)
+
+    @_command
+    def zrevrangebyscore(self, key:str,
+                max:ZScoreBoundary=ZScoreBoundary.MAX_VALUE,
+                min:ZScoreBoundary=ZScoreBoundary.MIN_VALUE) -> ZRangeResult:
+        """ Return a range of members in a sorted set, by score, with scores ordered from high to low """
+        return self._query(b'zrevrangebyscore', self._encode(key),
+                    self._encode_zscore_boundary(max), self._encode_zscore_boundary(min),
+                    b'withscores',
+                    post_process_func=_PostProcessor.multibulk_as_zrangeresult)
+
+    @_command
+    def zremrangebyscore(self, key:str,
+                min:ZScoreBoundary=ZScoreBoundary.MIN_VALUE,
+                max:ZScoreBoundary=ZScoreBoundary.MAX_VALUE) -> int:
+        """ Remove all members in a sorted set within the given scores """
+        return self._query(b'zremrangebyscore', self._encode(key),
+                    self._encode_zscore_boundary(min), self._encode_zscore_boundary(max))
+
+    @_command
+    def zremrangebyrank(self, key:str, min:int=0, max:int=-1) -> int:
+        """ Remove all members in a sorted set within the given indexes """
+        return self._query(b'zremrangebyrank', self._encode(key),
+                    self._encode_int(min), self._encode_int(max))
+
+    @_command
+    def zcount(self, key:str, min:ZScoreBoundary, max:ZScoreBoundary) -> int:
+        """ Count the members in a sorted set with scores within the given values """
+        return self._query(b'zcount', self._encode(key),
+                    self._encode_zscore_boundary(min), self._encode_zscore_boundary(max))
+
+    @_command
+    def zscore(self, key:str, member:str) -> float:
+        """ Get the score associated with the given member in a sorted set """
+        return self._query(b'zscore', self._encode(key), self._encode(member))
+
+    #def zunionstore(self, destination:str, min:ZScoreBoundary, max:ZScoreBoundary) -> int: # XXX: TODO: test it
+    #def zinterstore(self, destination:str, min:ZScoreBoundary, max:ZScoreBoundary) -> int: # XXX: TODO: test it
+
+    @_command
+    def zcard(self, key:str) -> int:
+        """ Get the number of members in a sorted set """
+        return self._query(b'zcard', self._encode(key))
+
+    @_command
+    def zrank(self, key:str, member:str) -> (int, NoneType):
+        """ Determine the index of a member in a sorted set """
+        return self._query(b'zrank', self._encode(key), self._encode(member))
+
+    @_command
+    def zrevrank(self, key:str, member:str) -> (int, NoneType):
+        """ Determine the index of a member in a sorted set, with scores ordered from high to low """
+        return self._query(b'zrevrank', self._encode(key), self._encode(member))
+
+    @_command
+    def zincrby(self, key:str, increment:float, member:str) -> float:
+        """ Increment the score of a member in a sorted set """
+        return self._query(b'zincrby', self._encode(key),
+                    self._encode_float(increment), self._encode(member),
+                    post_process_func=_PostProcessor.str_to_float)
+
+    @_command
+    def zrem(self, key:str, *members) -> int:
+        """ Remove one or more members from a sorted set """
+        return self._query(b'zrem', self._encode(key), *map(self._encode, members))
 
     # Hashes
 

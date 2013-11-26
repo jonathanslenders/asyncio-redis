@@ -5,7 +5,7 @@ from asyncio.futures import Future
 from asyncio.protocols import SubprocessProtocol
 from asyncio.tasks import gather
 
-from asyncio_redis import RedisProtocol, Connection, Transaction, RedisException, StatusReply
+from asyncio_redis import RedisProtocol, Connection, Transaction, RedisException, StatusReply, ZRangeResult, ZScoreBoundary
 from threading import Thread
 from time import sleep
 
@@ -627,6 +627,172 @@ class RedisProtocolTest(unittest.TestCase):
         # Decrby
         result = yield from protocol.decrby(u'key1', 4)
         self.assertEqual(result, 10)
+
+    @redis_test
+    def test_zset(self, transport, protocol):
+        yield from protocol.delete('myzset')
+
+        # Test zadd
+        result = yield from protocol.zadd('myzset', { 'key': 4, 'key2': 5, 'key3': 5.5 })
+        self.assertEqual(result, 3)
+
+        # Test zcard
+        result = yield from protocol.zcard('myzset')
+        self.assertEqual(result, 3)
+
+        # Test zrank
+        result = yield from protocol.zrank('myzset', 'key')
+        self.assertEqual(result, 0)
+        result = yield from protocol.zrank('myzset', 'key3')
+        self.assertEqual(result, 2)
+
+        result = yield from protocol.zrank('myzset', 'unknown-key')
+        self.assertEqual(result, None)
+
+        # Test revrank
+        result = yield from protocol.zrevrank('myzset', 'key')
+        self.assertEqual(result, 2)
+        result = yield from protocol.zrevrank('myzset', 'key3')
+        self.assertEqual(result, 0)
+
+        result = yield from protocol.zrevrank('myzset', 'unknown-key')
+        self.assertEqual(result, None)
+
+        # Test zrange
+        result = yield from protocol.zrange('myzset')
+        self.assertIsInstance(result, ZRangeResult)
+        self.assertEqual((yield from result.get_as_dict()),
+                { 'key': 4.0, 'key2': 5.0, 'key3': 5.5 })
+
+        result = yield from protocol.zrange('myzset')
+        self.assertIsInstance(result, ZRangeResult)
+
+        for f in result:
+            d = yield from f
+
+            self.assertIn(d, [
+                {'key': 4.0},
+                {'key2': 5.0},
+                {'key3': 5.5} ])
+
+        # Test zrangebyscore
+        result = yield from protocol.zrangebyscore('myzset')
+        self.assertEqual((yield from result.get_as_dict()),
+                { 'key': 4.0, 'key2': 5.0, 'key3': 5.5 })
+
+        result = yield from protocol.zrangebyscore('myzset')
+        self.assertEqual((yield from result.get_as_list()),
+                [ 'key', 'key2', 'key3' ])
+
+        result = yield from protocol.zrangebyscore('myzset', min=ZScoreBoundary(4.5))
+        self.assertEqual((yield from result.get_as_dict()),
+                { 'key2': 5.0, 'key3': 5.5 })
+
+        result = yield from protocol.zrangebyscore('myzset', max=ZScoreBoundary(5.5))
+        self.assertEqual((yield from result.get_as_dict()),
+                { 'key': 4.0, 'key2': 5.0, 'key3': 5.5 })
+        result = yield from protocol.zrangebyscore('myzset',
+                        max=ZScoreBoundary(5.5, exclude_boundary=True))
+        self.assertEqual((yield from result.get_as_dict()),
+                { 'key': 4.0, 'key2': 5.0 })
+
+        # Test zrevrangebyscore (identical to zrangebyscore, unless we call get_as_list)
+        result = yield from protocol.zrevrangebyscore('myzset')
+        self.assertEqual((yield from result.get_as_dict()),
+                { 'key': 4.0, 'key2': 5.0, 'key3': 5.5 })
+
+        result = yield from protocol.zrevrangebyscore('myzset')
+        self.assertEqual((yield from result.get_as_list()),
+                [ 'key3', 'key2', 'key' ])
+
+        result = yield from protocol.zrevrangebyscore('myzset', min=ZScoreBoundary(4.5))
+        self.assertEqual((yield from result.get_as_dict()),
+                { 'key2': 5.0, 'key3': 5.5 })
+
+        result = yield from protocol.zrevrangebyscore('myzset', max=ZScoreBoundary(5.5))
+        self.assertEqual((yield from result.get_as_dict()),
+                { 'key': 4.0, 'key2': 5.0, 'key3': 5.5 })
+        result = yield from protocol.zrevrangebyscore('myzset',
+                        max=ZScoreBoundary(5.5, exclude_boundary=True))
+        self.assertEqual((yield from result.get_as_dict()),
+                { 'key': 4.0, 'key2': 5.0 })
+
+    @redis_test
+    def test_zset_zincrby(self, transport, protocol):
+        yield from protocol.delete('myzset')
+        yield from protocol.zadd('myzset', { 'key': 4, 'key2': 5, 'key3': 5.5 })
+
+        # Test zincrby
+        result = yield from protocol.zincrby('myzset', 1.1, 'key')
+        self.assertEqual(result, 5.1)
+
+        result = yield from protocol.zrange('myzset')
+        self.assertEqual((yield from result.get_as_dict()),
+                { 'key': 5.1, 'key2': 5.0, 'key3': 5.5 })
+
+    @redis_test
+    def test_zset_zrem(self, transport, protocol):
+        yield from protocol.delete('myzset')
+        yield from protocol.zadd('myzset', { 'key': 4, 'key2': 5, 'key3': 5.5 })
+
+        # Test zrem
+        result = yield from protocol.zrem('myzset', 'key')
+        self.assertEqual(result, 1)
+
+        result = yield from protocol.zrem('myzset', 'key')
+        self.assertEqual(result, 0)
+
+        result = yield from protocol.zrange('myzset')
+        self.assertEqual((yield from result.get_as_dict()),
+                { 'key2': 5.0, 'key3': 5.5 })
+
+    @redis_test
+    def test_zset_zrembyscore(self, transport, protocol):
+        # Test zremrangebyscore (1)
+        yield from protocol.delete('myzset')
+        yield from protocol.zadd('myzset', { 'key': 4, 'key2': 5, 'key3': 5.5 })
+
+        result = yield from protocol.zremrangebyscore('myzset', min=ZScoreBoundary(5.0))
+        self.assertEqual(result, 2)
+        result = yield from protocol.zrange('myzset')
+        self.assertEqual((yield from result.get_as_dict()), { 'key': 4.0 })
+
+        # Test zremrangebyscore (2)
+        yield from protocol.delete('myzset')
+        yield from protocol.zadd('myzset', { 'key': 4, 'key2': 5, 'key3': 5.5 })
+
+        result = yield from protocol.zremrangebyscore('myzset', max=ZScoreBoundary(5.0))
+        self.assertEqual(result, 2)
+        result = yield from protocol.zrange('myzset')
+        self.assertEqual((yield from result.get_as_dict()), { 'key3': 5.5 })
+
+    @redis_test
+    def test_zset_zremrangebyrank(self, transport, protocol):
+        @asyncio.coroutine
+        def setup():
+            yield from protocol.delete('myzset')
+            yield from protocol.zadd('myzset', { 'key': 4, 'key2': 5, 'key3': 5.5 })
+
+        # Test zremrangebyrank (1)
+        yield from setup()
+        result = yield from protocol.zremrangebyrank('myzset')
+        self.assertEqual(result, 3)
+        result = yield from protocol.zrange('myzset')
+        self.assertEqual((yield from result.get_as_dict()), { })
+
+        # Test zremrangebyrank (2)
+        yield from setup()
+        result = yield from protocol.zremrangebyrank('myzset', min=2)
+        self.assertEqual(result, 1)
+        result = yield from protocol.zrange('myzset')
+        self.assertEqual((yield from result.get_as_dict()), { 'key': 4.0, 'key2': 5.0 })
+
+        # Test zremrangebyrank (3)
+        yield from setup()
+        result = yield from protocol.zremrangebyrank('myzset', max=1)
+        self.assertEqual(result, 2)
+        result = yield from protocol.zrange('myzset')
+        self.assertEqual((yield from result.get_as_dict()), { 'key3': 5.5 })
 
     @redis_test
     def test_randomkey(self, transport, protocol):

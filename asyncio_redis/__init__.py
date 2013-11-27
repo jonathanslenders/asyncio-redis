@@ -174,7 +174,12 @@ class _PostProcessor:
         return float(result)
 
 
-class NativeType(object):
+class ListOf:
+    def __init__(self, type_):
+        self.type = type_
+
+
+class NativeType:
     """
     Constant which represents the native Python type that's used.
     """
@@ -207,6 +212,8 @@ def _command(method):
 
         if type_ == NativeType:
             return protocol.native_type
+        elif isinstance(type_, ListOf):
+            return list # We don't check the content of the list.
         else:
             return type_
 
@@ -268,6 +275,9 @@ def _command(method):
             return ":class:`asyncio_redis.ZScoreBoundary`"
         elif type_ == NativeType:
             return "Native Python type, as defined by ``RedisProtocol.native_type``"
+
+        elif isinstance(type_, ListOf):
+            return "List or iterable of %s" % get_name(type_.type)
 
         if isinstance(type_, tuple):
             return ' or '.join(get_name(t) for t in type_)
@@ -607,7 +617,7 @@ class RedisProtocol(asyncio.Protocol):
         return self._query(b'get', self.encode_from_native(key))
 
     @_command
-    def mget(self, *keys) -> list:
+    def mget(self, keys:ListOf(NativeType)) -> list:
         """ Returns the values of all specified keys. """
         return self._query(b'mget', *map(self.encode_from_native, keys),
                 post_process_func=_PostProcessor.multibulk_as_list)
@@ -660,7 +670,7 @@ class RedisProtocol(asyncio.Protocol):
                 post_process_func=_PostProcessor.int_to_bool)
 
     @_command
-    def delete(self, *keys) -> int:
+    def delete(self, keys:ListOf(NativeType)) -> int:
         """ Delete a key """
         return self._query(b'del', *map(self.encode_from_native, keys))
 
@@ -686,17 +696,17 @@ class RedisProtocol(asyncio.Protocol):
         raise NotImplementedError
 
     @_command
-    def bitop_and(self, destkey:NativeType, *srckeys) -> int:
+    def bitop_and(self, destkey:NativeType, srckeys:ListOf(NativeType)) -> int:
         """ Perform a bitwise AND operation between multiple keys. """
         return self._bitop(b'and', destkey, srckeys)
 
     @_command
-    def bitop_or(self, destkey:NativeType, *srckeys) -> int:
+    def bitop_or(self, destkey:NativeType, srckeys:ListOf(NativeType)) -> int:
         """ Perform a bitwise OR operation between multiple keys. """
         return self._bitop(b'or', destkey, srckeys)
 
     @_command
-    def bitop_xor(self, destkey:NativeType, *srckeys) -> int:
+    def bitop_xor(self, destkey:NativeType, srckeys:ListOf(NativeType)) -> int:
         """ Perform a bitwise XOR operation between multiple keys. """
         return self._bitop(b'xor', destkey, srckeys)
 
@@ -778,12 +788,12 @@ class RedisProtocol(asyncio.Protocol):
     # Set operations
 
     @_command
-    def sadd(self, key:NativeType, *members) -> int:
+    def sadd(self, key:NativeType, members:ListOf(NativeType)) -> int:
         """ Add one or more members to a set """
         return self._query(b'sadd', self.encode_from_native(key), *map(self.encode_from_native, members))
 
     @_command
-    def srem(self, key:NativeType, *members) -> int:
+    def srem(self, key:NativeType, members:ListOf(NativeType)) -> int: # TODO: test
         """ Remove one or more members from a set """
         return self._query(b'srem', self.encode_from_native(key), *map(self.encode_from_native, members))
 
@@ -818,35 +828,36 @@ class RedisProtocol(asyncio.Protocol):
                 post_process_func=_PostProcessor.multibulk_as_set)
 
     @_command
-    def sinter(self, *keys) -> SetType:
+    def sinter(self, keys:ListOf(NativeType)) -> SetType:
         """ Intersect multiple sets """
         return self._query(b'sinter', *map(self.encode_from_native, keys),
                 post_process_func=_PostProcessor.multibulk_as_set)
 
     @_command
-    def sinterstore(self, destination:NativeType, *keys) -> int:
+    def sinterstore(self, destination:NativeType, keys:ListOf(NativeType)) -> int:
         """ Intersect multiple sets and store the resulting set in a key """
         return self._query(b'sinterstore', self.encode_from_native(destination), *map(self.encode_from_native, keys))
 
     @_command
-    def sdiff(self, key:NativeType, *keys) -> SetType:
+    def sdiff(self, keys:ListOf(NativeType)) -> SetType:
         """ Subtract multiple sets """
-        return self._query(b'sdiff', self.encode_from_native(key), *map(self.encode_from_native, keys),
+        return self._query(b'sdiff', *map(self.encode_from_native, keys),
                 post_process_func=_PostProcessor.multibulk_as_set)
 
     @_command
-    def sdiffstore(self, destination:NativeType, *keys) -> int:
+    def sdiffstore(self, destination:NativeType, keys:ListOf(NativeType)) -> int:
         """ Subtract multiple sets and store the resulting set in a key """
-        return self._query(b'sdiffstore', self.encode_from_native(destination), *map(self.encode_from_native, keys))
+        return self._query(b'sdiffstore', self.encode_from_native(destination),
+                *map(self.encode_from_native, keys))
 
     @_command
-    def sunion(self, *keys) -> SetType:
+    def sunion(self, keys:ListOf(NativeType)) -> SetType:
         """ Add multiple sets """
         return self._query(b'sunion', *map(self.encode_from_native, keys),
                 post_process_func=_PostProcessor.multibulk_as_set)
 
     @_command
-    def sunionstore(self, destination:NativeType, *keys) -> int:
+    def sunionstore(self, destination:NativeType, keys:ListOf(NativeType)) -> int:
         """ Add multiple sets and store the resulting set in a key """
         return self._query(b'sunionstore', self.encode_from_native(destination), *map(self.encode_from_native, keys))
 
@@ -858,7 +869,7 @@ class RedisProtocol(asyncio.Protocol):
     # List operations
 
     @_command
-    def lpush(self, key:NativeType, *values) -> int:
+    def lpush(self, key:NativeType, values:ListOf(NativeType)) -> int:
         """ Prepend one or multiple values to a list """
         return self._query(b'lpush', self.encode_from_native(key), *map(self.encode_from_native, values))
 
@@ -868,7 +879,7 @@ class RedisProtocol(asyncio.Protocol):
         return self._query(b'lpushx', self.encode_from_native(key), self.encode_from_native(value))
 
     @_command
-    def rpush(self, key:NativeType, *values) -> int:
+    def rpush(self, key:NativeType, values:ListOf(NativeType)) -> int:
         """ Append one or multiple values to a list """
         return self._query(b'rpush', self.encode_from_native(key), *map(self.encode_from_native, values))
 
@@ -919,14 +930,14 @@ class RedisProtocol(asyncio.Protocol):
         return self._query(b'lindex', self.encode_from_native(key), self._encode_int(index))
 
     @_command
-    def blpop(self, *keys, timeout:int=0) -> list: # TODO: Returns (list_name, value) -> is that the best way?
+    def blpop(self, keys:ListOf(NativeType), timeout:int=0) -> list: # TODO: Returns (list_name, value) -> is that the best way?
         """ Remove and get the first element in a list, or block until one is available. """
-        return self._blocking_pop(*keys, timeout=timeout, right=False)
+        return self._blocking_pop(keys, timeout=timeout, right=False)
 
     @_command
-    def brpop(self, *keys, timeout:int=0) -> list: # TODO: Returns (list_name, value) -> is that the best way?
+    def brpop(self, keys:ListOf(NativeType), timeout:int=0) -> list: # TODO: Returns (list_name, value) -> is that the best way?
         """ Remove and get the last element in a list, or block until one is available. """
-        return self._blocking_pop(*keys, timeout=timeout, right=True)
+        return self._blocking_pop(keys, timeout=timeout, right=True)
 
     @_command
     def brpoplpush(self, source:NativeType, destination:NativeType, timeout:int=0) -> NativeType:
@@ -934,7 +945,7 @@ class RedisProtocol(asyncio.Protocol):
         return self._query(b'brpoplpush', self.encode_from_native(source), self.encode_from_native(destination),
                     self._encode_int(timeout), set_blocking=True)
 
-    def _blocking_pop(self, *keys, timeout:int=0, right:bool=False):
+    def _blocking_pop(self, keys, timeout:int=0, right:bool=False):
         command = b'brpop' if right else b'blpop'
         return self._query(command, *([ self.encode_from_native(k) for k in keys ] + [self._encode_int(timeout)]),
                 post_process_func=_PostProcessor.multibulk_as_list, set_blocking=True)
@@ -1066,7 +1077,7 @@ class RedisProtocol(asyncio.Protocol):
                     post_process_func=_PostProcessor.str_to_float)
 
     @_command
-    def zrem(self, key:NativeType, *members) -> int:
+    def zrem(self, key:NativeType, members:ListOf(NativeType)) -> int:
         """ Remove one or more members from a sorted set """
         return self._query(b'zrem', self.encode_from_native(key), *map(self.encode_from_native, members))
 
@@ -1078,7 +1089,7 @@ class RedisProtocol(asyncio.Protocol):
         return self._query(b'hset', self.encode_from_native(key), self.encode_from_native(field), self.encode_from_native(value))
 
     @_command
-    def hmset(self, key:NativeType, **values) -> StatusReply:
+    def hmset(self, key:NativeType, values:dict) -> StatusReply:
         """ Set multiple hash fields to multiple values """
         data = [ ]
         for k,v in values.items():
@@ -1096,7 +1107,7 @@ class RedisProtocol(asyncio.Protocol):
         return self._query(b'hsetnx', self.encode_from_native(key), self.encode_from_native(field), self.encode_from_native(value))
 
     @_command
-    def hdel(self, key:NativeType, *fields) -> int:
+    def hdel(self, key:NativeType, fields:ListOf(NativeType)) -> int:
         """ Delete one or more hash fields """
         return self._query(b'hdel', self.encode_from_native(key), *map(self.encode_from_native, fields))
 
@@ -1139,7 +1150,7 @@ class RedisProtocol(asyncio.Protocol):
         return self._query(b'hgetall', self.encode_from_native(key), post_process_func=post)
 
     @_command
-    def hmget(self, key:NativeType, *fields) -> list:
+    def hmget(self, key:NativeType, fields:ListOf(NativeType)) -> list:
         """ Get the values of all the given hash fields """
         return self._query(b'hmget', self.encode_from_native(key), *map(self.encode_from_native, fields),
                 post_process_func=_PostProcessor.multibulk_as_list)
@@ -1162,7 +1173,7 @@ class RedisProtocol(asyncio.Protocol):
 
     @_command
     @asyncio.coroutine
-    def subscribe(self, *channels) -> list: # TODO: wrap result in SubscribeReply
+    def subscribe(self, channels:ListOf(NativeType)) -> list: # TODO: wrap result in SubscribeReply
         """ Listen for messages published to the given channels """
         if self.in_transaction:
             raise RedisException('Cannot call subscribe inside a transaction.')
@@ -1232,7 +1243,7 @@ class RedisProtocol(asyncio.Protocol):
         return self._query(b'flushdb')
 
     @_command
-    def object(self, subcommand, *args):
+    def object(self, subcommand, args):
         """ Inspect the internals of Redis objects """
         raise NotImplementedError
 

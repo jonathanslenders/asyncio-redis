@@ -257,21 +257,22 @@ def _command(method):
 
     # Use function annotations to generate param documentation.
 
-    def get_name(type):
-        if type == MultiBulkReply:
+    def get_name(type_):
+        if type_ == MultiBulkReply:
             return ":class:`asyncio_redis.MultiBulkReply`"
-        elif type == StatusReply:
+        elif type_ == StatusReply:
             return ":class:`asyncio_redis.StatusReply`"
-        elif type == ZRangeResult:
+        elif type_ == ZRangeResult:
             return ":class:`asyncio_redis.ZRangeResult`"
-        elif type == ZScoreBoundary:
+        elif type_ == ZScoreBoundary:
             return ":class:`asyncio_redis.ZScoreBoundary`"
-        elif type == NativeType:
+        elif type_ == NativeType:
             return "Native Python type, as defined by ``RedisProtocol.native_type``"
-        if isinstance(type, tuple):
-            return ' or '.join("``%s``" % t.__name__ for t in type)
+
+        if isinstance(type_, tuple):
+            return ' or '.join(get_name(t) for t in type_)
         else:
-            return "``%s``" % type.__name__
+            return "``%s``" % type_.__name__
 
     def get_param(k, v):
         return ':param %s: %s\n' % (k, get_name(v))

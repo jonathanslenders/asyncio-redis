@@ -90,6 +90,17 @@ View `the source code at GitHub`_
 .. _the source code at GitHub: https://github.com/jonathanslenders/asyncio-redis
 
 
+Author and License
+==================
+
+The ``asyncio_redis`` package is written by Jonathan Slenders.
+It's BSD licensed and freely available.
+
+Feel free to improve this package and `send a pull request`_.
+
+.. _send a pull request: https://github.com/jonathanslenders/asyncio-redis
+
+
 Indices and tables
 ==================
 

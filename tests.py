@@ -629,6 +629,65 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertEqual(result, 10)
 
     @redis_test
+    def test_bitops(self, transport, protocol):
+        yield from protocol.set('a', 'fff')
+        yield from protocol.set('b', '555')
+
+        a = b'f'[0]
+        b = b'5'[0]
+
+        # Calculate set bits in the character 'f'
+        set_bits = len([ c for c in bin(a) if c == '1' ])
+
+        # Bitcount
+        result = yield from protocol.bitcount('a')
+        self.assertEqual(result, set_bits * 3)
+
+        # And
+        result = yield from protocol.bitop_and('result', 'a', 'b')
+        self.assertEqual(result, 3)
+        result = yield from protocol.get('result')
+        self.assertEqual(result, chr(a & b) * 3)
+
+        # Or
+        result = yield from protocol.bitop_or('result', 'a', 'b')
+        self.assertEqual(result, 3)
+        result = yield from protocol.get('result')
+        self.assertEqual(result, chr(a | b) * 3)
+
+        # Xor
+        result = yield from protocol.bitop_xor('result', 'a', 'b')
+        self.assertEqual(result, 3)
+        result = yield from protocol.get('result')
+        self.assertEqual(result, chr(a ^ b) * 3)
+
+        # Not
+        result = yield from protocol.bitop_not('result', 'a')
+        self.assertEqual(result, 3)
+
+            # The current protocol is not able to handle this result, if we're
+            # using an UTF-8 decoder. TODO: implement 'dummy' byte decoder.
+
+        # result = yield from protocol.get('result')
+        # self.assertEqual(result, chr(~ a) * 3)
+
+    @redis_test
+    def test_setbit(self, transport, protocol):
+        yield from protocol.set('a', 'fff')
+
+        value = yield from protocol.getbit('a', 3)
+        self.assertIsInstance(value, bool)
+        self.assertEqual(value, False)
+
+        value = yield from protocol.setbit('a', 3, True)
+        self.assertIsInstance(value, bool)
+        self.assertEqual(value, False) # Set returns the old value.
+
+        value = yield from protocol.getbit('a', 3)
+        self.assertIsInstance(value, bool)
+        self.assertEqual(value, True)
+
+    @redis_test
     def test_zset(self, transport, protocol):
         yield from protocol.delete('myzset')
 

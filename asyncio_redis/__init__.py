@@ -652,32 +652,44 @@ class RedisProtocol(asyncio.Protocol):
         raise NotImplementedError
 
     @_command
-    def bitop_and(self, destkey:str, *srckeys): # XXX: unittest
+    def bitop_and(self, destkey:str, *srckeys) -> int:
         """ Perform a bitwise AND operation between multiple keys. """
-        return self._bitop(b'and', destkey, *srckeys)
+        return self._bitop(b'and', destkey, srckeys)
 
     @_command
-    def bitop_or(self, destkey:str, *srckeys): # XXX: unittest
+    def bitop_or(self, destkey:str, *srckeys) -> int:
         """ Perform a bitwise OR operation between multiple keys. """
-        return self._bitop(b'or', destkey, *srckeys)
+        return self._bitop(b'or', destkey, srckeys)
 
     @_command
-    def bitop_xor(self, destkey:str, *srckeys): # XXX: unittest
+    def bitop_xor(self, destkey:str, *srckeys) -> int:
         """ Perform a bitwise XOR operation between multiple keys. """
-        return self._bitop(b'xor', destkey, *srckeys)
+        return self._bitop(b'xor', destkey, srckeys)
 
-    @_command
-    def bitop_xor(self, destkey:str, *srckeys): # XXX: unittest
-        """ Perform a bitwise NOT operation between multiple keys. """
-        return self._bitop(b'not', destkey, *srckeys)
-
-    def _bitop(self, op, destkey, *srckeys):
+    def _bitop(self, op, destkey, srckeys):
         return self._query(b'bitop', op, self._encode(destkey), *map(self._encode, srckeys))
 
     @_command
-    def bitcount(self, key, start=0, end=-1): # XXX: unittest
+    def bitop_not(self, destkey:str, key:str) -> int:
+        """ Perform a bitwise NOT operation between multiple keys. """
+        return self._query(b'bitop', b'not', self._encode(destkey), self._encode(key))
+
+    @_command
+    def bitcount(self, key:str, start:int=0, end:int=-1):
         """ Count the number of set bits (population counting) in a string. """
         return self._query(b'bitcount', self._encode(key), self._encode_int(start), self._encode_int(end))
+
+    @_command
+    def getbit(self, key:str, offset:int) -> bool:
+        """ Returns the bit value at offset in the string value stored at key """
+        return self._query(b'getbit', self._encode(key), self._encode_int(offset),
+                     post_process_func=_PostProcessor.int_to_bool)
+
+    @_command
+    def setbit(self, key:str, offset:int, value:bool) -> bool:
+        """ Sets or clears the bit at offset in the string value stored at key """
+        return self._query(b'setbit', self._encode(key), self._encode_int(offset),
+                    self._encode_int(int(value)), post_process_func=_PostProcessor.int_to_bool)
 
     # Keys
 

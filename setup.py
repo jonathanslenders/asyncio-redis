@@ -7,7 +7,7 @@ except ImportError:
 setup(
         name='asyncio_redis',
         author='Jonathan Slenders',
-        version='0.1',
+        version='0.2',
         license='LICENSE.txt',
         url='https://github.com/jonathanslenders/asyncio-redis',
 

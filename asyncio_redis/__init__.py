@@ -457,7 +457,7 @@ class RedisProtocol(asyncio.Protocol):
     # Request state
 
     @property
-    def in_blocking_call(self): # TODO: unittest
+    def in_blocking_call(self):
         """ True when waiting for answer to blocking command. """
         return any(c.is_blocking for c in self._pipelined_calls)
 

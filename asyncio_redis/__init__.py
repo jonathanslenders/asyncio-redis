@@ -1072,12 +1072,22 @@ class RedisProtocol(asyncio.Protocol):
     def zunionstore(self, destination:NativeType, keys:ListOf(NativeType), weights:(NoneType,ListOf(float))=None,
                                     aggregate=ZAggregate.SUM) -> int:
         """ Add multiple sorted sets and store the resulting sorted set in a new key """
+        return self._zstore(b'zunionstore', destination, keys, weights, aggregate)
+
+    @_command
+    def zinterstore(self, destination:NativeType, keys:ListOf(NativeType), weights:(NoneType,ListOf(float))=None,
+                                    aggregate=ZAggregate.SUM) -> int:
+        """ Intersect multiple sorted sets and store the resulting sorted set in a new key """
+        return self._zstore(b'zinterstore', destination, keys, weights, aggregate)
+
+    def _zstore(self, command, destination, keys, weights, aggregate):
+        """ Common part for zunionstore and zinterstore. """
         numkeys = len(keys)
         if weights is None:
             weights = [1] * numkeys
 
         return self._query(*
-                [ b'zunionstore', self.encode_from_native(destination), self._encode_int(numkeys) ] +
+                [ command, self.encode_from_native(destination), self._encode_int(numkeys) ] +
                 list(map(self.encode_from_native, keys)) +
                 [ b'weights' ] +
                 list(map(self._encode_float, weights)) +
@@ -1087,8 +1097,6 @@ class RedisProtocol(asyncio.Protocol):
                         ZAggregate.MIN: b'MIN',
                         ZAggregate.MAX: b'MAX' }[aggregate]
                 ] )
-
-    #def zinterstore(self, destination:NativeType, min:ZScoreBoundary, max:ZScoreBoundary) -> int: # XXX: TODO: test it
 
     @_command
     def zcard(self, key:NativeType) -> int:

@@ -885,7 +885,7 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertEqual(result, 4)
         result = yield from protocol.zrange('union_key')
         result = yield from result.get_as_dict()
-        self.assertEqual(result, { 'key': 3, 'key2': 6.1, 'key3': 5.5, 'key4': 9 })
+        self.assertEqual(result, { 'key': 3.0, 'key2': 6.1, 'key3': 5.5, 'key4': 9.0 })
 
         # Call zunionstore with weights.
         result = yield from protocol.zunionstore('union_key', [ 'set_a', 'set_b' ], [1, 1.5])
@@ -893,6 +893,26 @@ class RedisProtocolTest(unittest.TestCase):
         result = yield from protocol.zrange('union_key')
         result = yield from result.get_as_dict()
         self.assertEqual(result, { 'key': 2.5, 'key2': 6.65, 'key3': 5.5, 'key4': 13.5 })
+
+    @redis_test
+    def test_zinterstore(self, transport, protocol):
+        yield from protocol.delete([ 'set_a', 'set_b' ])
+        yield from protocol.zadd('set_a', { 'key': 4, 'key2': 5, 'key3': 5.5 })
+        yield from protocol.zadd('set_b', { 'key': -1, 'key2': 1.1, 'key4': 9 })
+
+        # Call zinterstore
+        result = yield from protocol.zinterstore('inter_key', [ 'set_a', 'set_b' ])
+        self.assertEqual(result, 2)
+        result = yield from protocol.zrange('inter_key')
+        result = yield from result.get_as_dict()
+        self.assertEqual(result, { 'key': 3.0, 'key2': 6.1 })
+
+        # Call zinterstore with weights.
+        result = yield from protocol.zinterstore('inter_key', [ 'set_a', 'set_b' ], [1, 1.5])
+        self.assertEqual(result, 2)
+        result = yield from protocol.zrange('inter_key')
+        result = yield from result.get_as_dict()
+        self.assertEqual(result, { 'key': 2.5, 'key2': 6.65, })
 
     @redis_test
     def test_randomkey(self, transport, protocol):

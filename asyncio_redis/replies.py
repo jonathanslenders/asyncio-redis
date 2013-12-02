@@ -117,11 +117,11 @@ class SetReply:
     """
     Redis set result.
     The content can be retrieved by calling ``get_as_set`` or by
-    iterating over it, similar to :class:`MultiBulkReply`
+    iterating over it:
 
     ::
 
-        for f in multi_bulk_reply:
+        for f in set_reply:
             item = yield from f
             print(item)
     """
@@ -143,22 +143,55 @@ class ListReply:
     def __init__(self, multibulk_reply):
         self._result = multibulk_reply
 
+    def __iter__(self):
+        """ Yield a list of futures. """
+        return iter(self._result)
+
     def get_as_list(self):
         """ Return the result as a Python set.  """
         return self._result.get_as_list()
 
 
 class BlockingPopReply:
+    """ ``blpop`` or ``brpop`` reply """
     def __init__(self, list_name, value):
-        self.list_name = list_name
-        self.value = value
+        self._list_name = list_name
+        self._value = value
+
+    @property
+    def list_name(self):
+        """ List name. """
+        return self._list_name
+
+    @property
+    def value(self):
+        """ Popped value """
+        return self._value
 
 
 class SubscribeReply:
+    """ Answer to subscribe command. """
     def __init__(self, channel):
-        self.channel = channel
+        self._channel = channel
+
+    @property
+    def channel(self):
+        """ Channel name. """
+        return self._channel
+
 
 class PubSubReply:
+    """ Received pubsub message. """
     def __init__(self, channel, value):
-        self.channel = channel
-        self.value = value
+        self._channel = channel
+        self._value = value
+
+    @property
+    def channel(self):
+        """ Channel name """
+        return self._channel
+
+    @property
+    def value(self):
+        """ Received PubSub value """
+        return self._value

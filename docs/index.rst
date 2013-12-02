@@ -113,3 +113,4 @@ Indices and tables
    :maxdepth: 2
 
    pages/reference
+   pages/replies

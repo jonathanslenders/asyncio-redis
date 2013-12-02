@@ -14,21 +14,14 @@ wrapper which also offers connection pooling.
     :members:
     :exclude-members: data_received, eof_received, connection_lost
 
-
 .. autoclass:: asyncio_redis.Connection
-    :members:
-
-.. autoclass:: asyncio_redis.StatusReply
-    :members:
-
-.. autoclass:: asyncio_redis.MultiBulkReply
-    :members:
-
-.. autoclass:: asyncio_redis.ZRangeResult
     :members:
 
 .. autoclass:: asyncio_redis.ZScoreBoundary
     :members:
 
 .. autoclass:: asyncio_redis.Transaction
+    :members:
+
+.. autoclass:: asyncio_redis.ZAggregate
     :members:

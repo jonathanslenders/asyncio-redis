@@ -5,7 +5,7 @@ from asyncio.futures import Future
 from asyncio.protocols import SubprocessProtocol
 from asyncio.tasks import gather
 
-from asyncio_redis import RedisProtocol, Connection, Transaction, RedisException, StatusReply, ZRangeResult, ZScoreBoundary
+from asyncio_redis import RedisProtocol, Connection, Transaction, RedisException, StatusReply, ZRangeReply, ZScoreBoundary, BlockingPopReply, SubscribeReply, PubSubReply, ListReply, SetReply, DictReply
 from threading import Thread
 from time import sleep
 
@@ -89,6 +89,8 @@ class RedisProtocolTest(unittest.TestCase):
         yield from protocol.set(u'my_key', u'a')
         yield from protocol.set(u'my_key2', u'b')
         result = yield from protocol.mget([ u'my_key', u'my_key2' ])
+        self.assertIsInstance(result, ListReply)
+        result = yield from result.get_as_list()
         self.assertEqual(result, [u'a', u'b'])
 
     @redis_test
@@ -244,6 +246,8 @@ class RedisProtocolTest(unittest.TestCase):
 
         # Smembers
         value = yield from protocol.smembers(u'our_set')
+        self.assertIsInstance(value, SetReply)
+        value = yield from value.get_as_set()
         self.assertEqual(value, { u'a', u'b', u'c' })
 
         # sismember
@@ -257,32 +261,44 @@ class RedisProtocolTest(unittest.TestCase):
         yield from protocol.sadd(u'set2', [u'b', u'c', u'd', u'e'])
 
         value = yield from protocol.sunion([ u'our_set', 'set2' ])
+        self.assertIsInstance(value, SetReply)
+        value = yield from value.get_as_set()
         self.assertEqual(value, set([u'a', u'b', u'c', u'd', u'e']))
 
         value = yield from protocol.sinter([ u'our_set', 'set2' ])
+        value = yield from value.get_as_set()
         self.assertEqual(value, set([u'b', u'c']))
 
         value = yield from protocol.sdiff([ u'our_set', 'set2' ])
+        self.assertIsInstance(value, SetReply)
+        value = yield from value.get_as_set()
         self.assertEqual(value, set([u'a']))
         value = yield from protocol.sdiff([ u'set2', u'our_set' ])
+        value = yield from value.get_as_set()
         self.assertEqual(value, set([u'd', u'e']))
 
         # Interstore
         value = yield from protocol.sinterstore(u'result', [u'our_set', 'set2'])
         self.assertEqual(value, 2)
         value = yield from protocol.smembers(u'result')
+        self.assertIsInstance(value, SetReply)
+        value = yield from value.get_as_set()
         self.assertEqual(value, set([u'b', u'c']))
 
         # Unionstore
         value = yield from protocol.sunionstore(u'result', [u'our_set', 'set2'])
         self.assertEqual(value, 5)
         value = yield from protocol.smembers(u'result')
+        self.assertIsInstance(value, SetReply)
+        value = yield from value.get_as_set()
         self.assertEqual(value, set([u'a', u'b', u'c', u'd', u'e']))
 
         # Sdiffstore
         value = yield from protocol.sdiffstore(u'result', [u'set2', 'our_set'])
         self.assertEqual(value, 2)
         value = yield from protocol.smembers(u'result')
+        self.assertIsInstance(value, SetReply)
+        value = yield from value.get_as_set()
         self.assertEqual(value, set([u'd', u'e']))
 
     @redis_test
@@ -295,6 +311,8 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertEqual(result, 2)
 
         result = yield from protocol.smembers(u'our_set')
+        self.assertIsInstance(result, SetReply)
+        result = yield from result.get_as_set()
         self.assertEqual(result, set([u'a', u'd']))
 
     @redis_test
@@ -310,13 +328,19 @@ class RedisProtocolTest(unittest.TestCase):
         result = yield from protocol.spop(u'my_set')
         self.assertIn(result, [u'value1', u'value2'])
         result = yield from protocol.smembers(u'my_set')
+        self.assertIsInstance(result, SetReply)
+        result = yield from result.get_as_set()
         self.assertEqual(len(result), 1)
 
         # Test srandmember
         yield from setup()
         result = yield from protocol.srandmember(u'my_set')
+        self.assertIsInstance(result, ListReply)
+        result = yield from result.get_as_list()
         self.assertIn(result[0], [u'value1', u'value2'])
         result = yield from protocol.smembers(u'my_set')
+        self.assertIsInstance(result, SetReply)
+        result = yield from result.get_as_set()
         self.assertEqual(len(result), 2)
 
     @redis_test
@@ -350,6 +374,8 @@ class RedisProtocolTest(unittest.TestCase):
 
         # lrange
         value = yield from protocol.lrange(u'my_list')
+        self.assertIsInstance(value, ListReply)
+        value = yield from value.get_as_list()
         self.assertEqual(value, [ u'v2', 'v1', 'v3', 'v4'])
 
         # lset
@@ -357,6 +383,8 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertEqual(value, StatusReply('OK'))
 
         value = yield from protocol.lrange(u'my_list')
+        self.assertIsInstance(value, ListReply)
+        value = yield from value.get_as_list()
         self.assertEqual(value, [ u'v2', 'v1', 'v3', 'new-value'])
 
         # lindex
@@ -390,8 +418,10 @@ class RedisProtocolTest(unittest.TestCase):
         def blpop():
             test_order.append('#1')
             value = yield from protocol.blpop([u'my_list'])
+            self.assertIsInstance(value, BlockingPopReply)
+            self.assertEqual(value.list_name, u'my_list')
+            self.assertEqual(value.value, u'value')
             test_order.append('#3')
-            self.assertEqual(value, [u'my_list', u'value'])
         f = asyncio.Task(blpop())
 
         transport2, protocol2 = yield from connect(self.loop)
@@ -405,7 +435,9 @@ class RedisProtocolTest(unittest.TestCase):
         @asyncio.coroutine
         def blpop():
             value = yield from protocol.brpop([u'my_list'])
-            self.assertEqual(value, [u'my_list', u'value2'])
+            self.assertIsInstance(value, BlockingPopReply)
+            self.assertEqual(value.list_name, u'my_list')
+            self.assertEqual(value.value, u'value2')
         f = asyncio.Task(blpop())
 
         yield from protocol2.rpush(u'my_list', [u'value2'])
@@ -439,12 +471,16 @@ class RedisProtocolTest(unittest.TestCase):
         result = yield from protocol.linsert(u'my_list', u'1', u'A')
         self.assertEqual(result, 4)
         result = yield from protocol.lrange(u'my_list')
+        self.assertIsInstance(result, ListReply)
+        result = yield from result.get_as_list()
         self.assertEqual(result, [u'1', u'A', u'2', u'3'])
 
         # Insert before
         result = yield from protocol.linsert(u'my_list', u'3', u'B', before=True)
         self.assertEqual(result, 5)
         result = yield from protocol.lrange(u'my_list')
+        self.assertIsInstance(result, ListReply)
+        result = yield from result.get_as_list()
         self.assertEqual(result, [u'1', u'A', u'2', u'B', u'3'])
 
     @redis_test
@@ -520,13 +556,19 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertEqual(result, None)
 
         result = yield from protocol.hgetall(u'my_hash')
+        self.assertIsInstance(result, DictReply)
+        result = yield from result.get_as_dict()
         self.assertEqual(result, {u'key': u'value', u'key2': u'value2' })
 
         result = yield from protocol.hkeys(u'my_hash')
+        self.assertIsInstance(result, SetReply)
+        result = yield from result.get_as_set()
         self.assertIsInstance(result, set)
         self.assertEqual(result, {u'key', u'key2' })
 
         result = yield from protocol.hvals(u'my_hash')
+        self.assertIsInstance(result, ListReply)
+        result = yield from result.get_as_list()
         self.assertIsInstance(result, list)
         self.assertEqual(set(result), {u'value', u'value2' })
 
@@ -537,6 +579,8 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertEqual(result, 0)
 
         result = yield from protocol.hkeys(u'my_hash')
+        self.assertIsInstance(result, SetReply)
+        result = yield from result.get_as_set()
         self.assertEqual(result, { u'key' })
 
     @redis_test
@@ -566,9 +610,13 @@ class RedisProtocolTest(unittest.TestCase):
 
         # HMGet
         result = yield from protocol.hmget(u'my_hash', [u'a', u'b', u'c'])
+        self.assertIsInstance(result, ListReply)
+        result = yield from result.get_as_list()
         self.assertEqual(result, [ u'1', u'2', u'3'])
 
         result = yield from protocol.hmget(u'my_hash', [u'c', u'b'])
+        self.assertIsInstance(result, ListReply)
+        result = yield from result.get_as_list()
         self.assertEqual(result, [ u'3', u'2' ])
 
         # Hsetnx
@@ -605,14 +653,19 @@ class RedisProtocolTest(unittest.TestCase):
             # Subscribe
             self.assertEqual(protocol2.in_pubsub, False)
             value = yield from protocol2.subscribe([u'our_channel'])
-            self.assertEqual(value, [u'subscribe', u'our_channel', 1])
+            self.assertIsInstance(value, SubscribeReply)
+            self.assertEqual(value.channel, u'our_channel')
             self.assertEqual(protocol2.in_pubsub, True)
 
             value = yield from protocol2.get_next_published()
-            self.assertEqual(value, [u'message', u'our_channel', u'message1']) # TODO: return something nicer!
+            self.assertIsInstance(value, PubSubReply)
+            self.assertEqual(value.channel, u'our_channel')
+            self.assertEqual(value.value, u'message1')
 
             value = yield from protocol2.get_next_published()
-            self.assertEqual(value, [u'message', u'our_channel', u'message2'])
+            self.assertIsInstance(value, PubSubReply)
+            self.assertEqual(value.channel, u'our_channel')
+            self.assertEqual(value.value, u'message2')
 
         f = asyncio.Task(listener())
 
@@ -740,12 +793,12 @@ class RedisProtocolTest(unittest.TestCase):
 
         # Test zrange
         result = yield from protocol.zrange('myzset')
-        self.assertIsInstance(result, ZRangeResult)
+        self.assertIsInstance(result, ZRangeReply)
         self.assertEqual((yield from result.get_as_dict()),
                 { 'key': 4.0, 'key2': 5.0, 'key3': 5.5 })
 
         result = yield from protocol.zrange('myzset')
-        self.assertIsInstance(result, ZRangeResult)
+        self.assertIsInstance(result, ZRangeReply)
 
         for f in result:
             d = yield from f
@@ -761,7 +814,7 @@ class RedisProtocolTest(unittest.TestCase):
                 { 'key': 4.0, 'key2': 5.0, 'key3': 5.5 })
 
         result = yield from protocol.zrangebyscore('myzset')
-        self.assertEqual((yield from result.get_as_list()),
+        self.assertEqual((yield from result.get_keys_as_list()),
                 [ 'key', 'key2', 'key3' ])
 
         result = yield from protocol.zrangebyscore('myzset', min=ZScoreBoundary(4.5))
@@ -778,11 +831,12 @@ class RedisProtocolTest(unittest.TestCase):
 
         # Test zrevrangebyscore (identical to zrangebyscore, unless we call get_as_list)
         result = yield from protocol.zrevrangebyscore('myzset')
+        self.assertIsInstance(result, DictReply)
         self.assertEqual((yield from result.get_as_dict()),
                 { 'key': 4.0, 'key2': 5.0, 'key3': 5.5 })
 
         result = yield from protocol.zrevrangebyscore('myzset')
-        self.assertEqual((yield from result.get_as_list()),
+        self.assertEqual((yield from result.get_keys_as_list()),
                 [ 'key3', 'key2', 'key' ])
 
         result = yield from protocol.zrevrangebyscore('myzset', min=ZScoreBoundary(4.5))
@@ -790,6 +844,7 @@ class RedisProtocolTest(unittest.TestCase):
                 { 'key2': 5.0, 'key3': 5.5 })
 
         result = yield from protocol.zrevrangebyscore('myzset', max=ZScoreBoundary(5.5))
+        self.assertIsInstance(result, DictReply)
         self.assertEqual((yield from result.get_as_dict()),
                 { 'key': 4.0, 'key2': 5.0, 'key3': 5.5 })
         result = yield from protocol.zrevrangebyscore('myzset',
@@ -898,21 +953,21 @@ class RedisProtocolTest(unittest.TestCase):
     def test_zinterstore(self, transport, protocol):
         yield from protocol.delete([ 'set_a', 'set_b' ])
         yield from protocol.zadd('set_a', { 'key': 4, 'key2': 5, 'key3': 5.5 })
-        yield from protocol.zadd('set_b', { 'key': -1, 'key2': 1.1, 'key4': 9 })
+        yield from protocol.zadd('set_b', { 'key': -1, 'key2': 1.5, 'key4': 9 })
 
         # Call zinterstore
         result = yield from protocol.zinterstore('inter_key', [ 'set_a', 'set_b' ])
         self.assertEqual(result, 2)
         result = yield from protocol.zrange('inter_key')
         result = yield from result.get_as_dict()
-        self.assertEqual(result, { 'key': 3.0, 'key2': 6.1 })
+        self.assertEqual(result, { 'key': 3.0, 'key2': 6.5 })
 
         # Call zinterstore with weights.
         result = yield from protocol.zinterstore('inter_key', [ 'set_a', 'set_b' ], [1, 1.5])
         self.assertEqual(result, 2)
         result = yield from protocol.zrange('inter_key')
         result = yield from result.get_as_dict()
-        self.assertEqual(result, { 'key': 2.5, 'key2': 6.65, })
+        self.assertEqual(result, { 'key': 2.5, 'key2': 7.25, })
 
     @redis_test
     def test_randomkey(self, transport, protocol):
@@ -970,6 +1025,10 @@ class RedisProtocolTest(unittest.TestCase):
         r2 = yield from f2
         r4 = yield from f4
         r5 = yield from f5
+
+        r2 = yield from r2.get_as_list()
+        r4 = yield from r4.get_as_list()
+        r5 = yield from r5.get_as_dict()
 
         self.assertEqual(r1, u'a')
         self.assertEqual(r2, [u'a', u'b'])
@@ -1068,8 +1127,9 @@ class RedisConnectionTest(unittest.TestCase):
             @asyncio.coroutine
             def sink():
                 for i in range(0, 5):
-                    the_list, result = yield from connection.blpop(['my-list'])
-                    results.append(result)
+                    reply = yield from connection.blpop(['my-list'])
+                    self.assertIsInstance(reply, BlockingPopReply)
+                    results.append(reply.value)
 
             # Source: Push items on the queue
             @asyncio.coroutine

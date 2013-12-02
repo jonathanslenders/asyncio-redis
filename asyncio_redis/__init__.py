@@ -1372,7 +1372,7 @@ class Connection:
 
     ::
 
-        connection = yield from Connection(poolsize=10)
+        connection = yield from Connection.create(poolsize=10)
         connection.set('key', 'value')
     """
     protocol = RedisProtocol

@@ -277,6 +277,18 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertEqual(value, set([u'd', u'e']))
 
     @redis_test
+    def test_srem(self, transport, protocol):
+        yield from protocol.delete([ u'our_set' ])
+        yield from protocol.sadd(u'our_set', [u'a', u'b', u'c', u'd'])
+
+        # Call srem
+        result = yield from protocol.srem(u'our_set', [u'b', u'c'])
+        self.assertEqual(result, 2)
+
+        result = yield from protocol.smembers(u'our_set')
+        self.assertEqual(result, set([u'a', u'd']))
+
+    @redis_test
     def test_spop(self, transport, protocol):
         @asyncio.coroutine
         def setup():

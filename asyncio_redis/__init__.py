@@ -793,7 +793,7 @@ class RedisProtocol(asyncio.Protocol):
         return self._query(b'sadd', self.encode_from_native(key), *map(self.encode_from_native, members))
 
     @_command
-    def srem(self, key:NativeType, members:ListOf(NativeType)) -> int: # TODO: test
+    def srem(self, key:NativeType, members:ListOf(NativeType)) -> int:
         """ Remove one or more members from a set """
         return self._query(b'srem', self.encode_from_native(key), *map(self.encode_from_native, members))
 

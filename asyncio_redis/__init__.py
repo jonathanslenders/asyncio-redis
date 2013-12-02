@@ -23,6 +23,7 @@ __all__ = (
     'RedisException',
     'StatusReply',
     'MultiBulkReply',
+    'ZAggregate',
 )
 __author__ = 'Jonathan Slenders'
 __doc__ = \
@@ -105,6 +106,10 @@ class ZRangeResult:
 
     @asyncio.coroutine
     def get_as_dict(self):
+        """
+        Return the result of a sorted set query as dictionary.
+        This is a mapping from the elements to their scores.
+        """
         result = { }
         for f in self:
             result.update((yield from f))
@@ -112,6 +117,7 @@ class ZRangeResult:
 
     @asyncio.coroutine
     def get_as_list(self):
+        """ Return the result of a sorted set query as list of sorted set elements. """
         result = []
         for f in self:
             result += (yield from f).keys()
@@ -137,6 +143,17 @@ class ZScoreBoundary:
 
 ZScoreBoundary.MIN_VALUE = ZScoreBoundary('-inf')
 ZScoreBoundary.MAX_VALUE = ZScoreBoundary('+inf')
+
+class ZAggregate:
+    """ Aggregation method for zinterstore and zunionstore. """
+    SUM = 'SUM'
+    """ Sum aggregation. """
+
+    MIN = 'MIN'
+    """ Min aggregation. """
+
+    MAX = 'MAX'
+    """ Max aggregation. """
 
 
 class PipelinedCall:
@@ -1051,7 +1068,26 @@ class RedisProtocol(asyncio.Protocol):
         """ Get the score associated with the given member in a sorted set """
         return self._query(b'zscore', self.encode_from_native(key), self.encode_from_native(member))
 
-    #def zunionstore(self, destination:NativeType, min:ZScoreBoundary, max:ZScoreBoundary) -> int: # XXX: TODO: test it
+    @_command
+    def zunionstore(self, destination:NativeType, keys:ListOf(NativeType), weights:(NoneType,ListOf(float))=None,
+                                    aggregate=ZAggregate.SUM) -> int:
+        """ Add multiple sorted sets and store the resulting sorted set in a new key """
+        numkeys = len(keys)
+        if weights is None:
+            weights = [1] * numkeys
+
+        return self._query(*
+                [ b'zunionstore', self.encode_from_native(destination), self._encode_int(numkeys) ] +
+                list(map(self.encode_from_native, keys)) +
+                [ b'weights' ] +
+                list(map(self._encode_float, weights)) +
+                [ b'aggregate' ] +
+                [ {
+                        ZAggregate.SUM: b'SUM',
+                        ZAggregate.MIN: b'MIN',
+                        ZAggregate.MAX: b'MAX' }[aggregate]
+                ] )
+
     #def zinterstore(self, destination:NativeType, min:ZScoreBoundary, max:ZScoreBoundary) -> int: # XXX: TODO: test it
 
     @_command

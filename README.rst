@@ -10,6 +10,7 @@ Features
 - No dependencies
 - Connection pooling
 - Automatic conversion from unicode (Python) to bytes (inside Redis.)
+- Bytes and str protocols.
 - Completely tested
 - Blocking calls and transactions supported
 - Streaming of some multi bulk replies

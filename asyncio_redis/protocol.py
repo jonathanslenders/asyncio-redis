@@ -16,6 +16,7 @@ from .replies import *
 
 __all__ = (
     'RedisProtocol',
+    'RedisBytesProtocol',
     'Transaction',
 
     'ZAggregate',
@@ -211,16 +212,18 @@ def _command(method):
     def typecheck_input(protocol, *a, **kw):
         if params:
             for name, value in getcallargs(method, None, *a, **kw).items():
-                if name in params and not isinstance(value, get_real_type(protocol, params[name])):
-                    raise TypeError('%s received %r, expected %r' %
-                                    (method.__name__, type(value), params[name]))
+                if name in params:
+                    real_type = get_real_type(protocol, params[name])
+                    if not isinstance(value, real_type):
+                        raise TypeError('%s received %r, expected %r' %
+                                        (method.__name__, type(value).__name__, real_type))
 
     def typecheck_return(protocol, result):
         if return_type:
             expected_type = get_real_type(protocol, return_type)
             if not isinstance(result, expected_type):
                 raise TypeError('Got unexpected return type %r in %s, expected %r' %
-                                (type(result), method.__name__, expected_type))
+                                (type(result).__name__, method.__name__, expected_type))
 
     # Wrap it into a check which allows this command to be run either directly
     # on the protocol, outside of transactions or from the transaction object.
@@ -1400,6 +1403,20 @@ class RedisProtocol(asyncio.Protocol):
 
         result = yield from self._query(b'unwatch')
         assert result == StatusReply('OK')
+
+
+class RedisBytesProtocol(RedisProtocol):
+    """
+    Protocol class that doesn't decode the Redis bytes to str.
+    This is very useful for doing bit operations.
+    """
+    native_type = bytes
+
+    def encode_from_native(self, data:bytes) -> bytes:
+        return data
+
+    def decode_to_native(self, data:bytes) -> bytes:
+        return data
 
 
 class Transaction:

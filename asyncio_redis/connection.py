@@ -1,8 +1,8 @@
 import asyncio
-from .protocol import RedisProtocol, _all_commands
+from .protocol import RedisProtocol, RedisBytesProtocol, _all_commands
 from .exceptions import RedisException
 
-__all__ = ('Connection', )
+__all__ = ('Connection', 'BytesConnection')
 
 
 class Connection:
@@ -89,3 +89,10 @@ class Connection:
             return getattr(protocol, name)
         else:
             raise RedisException('All connection in the pool are in use. Please increase the poolsize.')
+
+
+class BytesConnection:
+    """
+    Connection that uses :class:`RedisBytesProtocol`
+    """
+    protocol = RedisBytesProtocol

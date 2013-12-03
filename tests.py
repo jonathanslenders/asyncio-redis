@@ -5,7 +5,7 @@ from asyncio.futures import Future
 from asyncio.protocols import SubprocessProtocol
 from asyncio.tasks import gather
 
-from asyncio_redis import RedisProtocol, Connection, Transaction, RedisException, StatusReply, ZRangeReply, ZScoreBoundary, BlockingPopReply, SubscribeReply, PubSubReply, ListReply, SetReply, DictReply
+from asyncio_redis import RedisProtocol, RedisBytesProtocol, Connection, Transaction, RedisException, StatusReply, ZRangeReply, ZScoreBoundary, BlockingPopReply, SubscribeReply, PubSubReply, ListReply, SetReply, DictReply
 from threading import Thread
 from time import sleep
 
@@ -18,8 +18,8 @@ PORT = int(os.environ['REDIS_PORT'])
 
 
 @asyncio.coroutine
-def connect(loop):
-    transport, protocol = yield from loop.create_connection(RedisProtocol, 'localhost', PORT)
+def connect(loop, protocol=RedisProtocol):
+    transport, protocol = yield from loop.create_connection(protocol, 'localhost', PORT)
     return transport, protocol
 
 
@@ -30,18 +30,19 @@ def redis_test(function):
         @asyncio.coroutine
         def c():
             # Create connection
-            transport, protocol = yield from connect(self.loop)
+            transport, protocol = yield from connect(self.loop, self.protocol_class)
 
             yield from function(self, transport, protocol)
 
         self.loop.run_until_complete(c())
     return wrapper
 
+
 class RedisProtocolTest(unittest.TestCase):
     def setUp(self):
         #self.loop = test_utils.TestLoop()
         self.loop = asyncio.get_event_loop()
-
+        self.protocol_class = RedisProtocol
 
     def tearDown(self):
         #self.loop.close()
@@ -739,11 +740,11 @@ class RedisProtocolTest(unittest.TestCase):
         result = yield from protocol.bitop_not('result', 'a')
         self.assertEqual(result, 3)
 
-            # The current protocol is not able to handle this result, if we're
-            # using an UTF-8 decoder. TODO: implement 'dummy' byte decoder.
-
-        # result = yield from protocol.get('result')
-        # self.assertEqual(result, chr(~ a) * 3)
+            # Check result using bytes protocol
+        bytes_transport, bytes_protocol = yield from connect(self.loop, RedisBytesProtocol)
+        result = yield from bytes_protocol.get(b'result')
+        self.assertIsInstance(result, bytes)
+        self.assertEqual(result, bytes((~a % 256, ~a % 256, ~a % 256)))
 
     @redis_test
     def test_setbit(self, transport, protocol):
@@ -1063,6 +1064,26 @@ class RedisProtocolTest(unittest.TestCase):
         with self.assertRaises(RedisException) as e:
             transaction = yield from transaction.multi()
         self.assertEqual(e.exception.args[0], 'Multi calls can not be nested.')
+
+
+class RedisBytesProtocolTest(unittest.TestCase):
+    def setUp(self):
+        self.loop = asyncio.get_event_loop()
+        self.protocol_class = RedisBytesProtocol
+
+    @redis_test
+    def test_bytes_protocol(self, transport, protocol):
+        # When passing string instead of bytes, this protocol should raise an exception.
+        with self.assertRaises(TypeError):
+            result = yield from protocol.set('key', 'value')
+
+        # Setting bytes
+        result = yield from protocol.set(b'key', b'value')
+        self.assertEqual(result, StatusReply('OK'))
+
+        # Getting bytes
+        result = yield from protocol.get(b'key')
+        self.assertEqual(result, b'value')
 
 
 class RedisConnectionTest(unittest.TestCase):

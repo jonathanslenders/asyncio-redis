@@ -335,9 +335,9 @@ class RedisProtocolTest(unittest.TestCase):
         # Test srandmember
         yield from setup()
         result = yield from protocol.srandmember(u'my_set')
-        self.assertIsInstance(result, ListReply)
-        result = yield from result.get_as_list()
-        self.assertIn(result[0], [u'value1', u'value2'])
+        self.assertIsInstance(result, SetReply)
+        result = yield from result.get_as_set()
+        self.assertIn(list(result)[0], [u'value1', u'value2'])
         result = yield from protocol.smembers(u'my_set')
         self.assertIsInstance(result, SetReply)
         result = yield from result.get_as_set()

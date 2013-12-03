@@ -17,7 +17,6 @@ from .replies import *
 __all__ = (
     'RedisProtocol',
     'Transaction',
-    'RedisException',
 
     'ZAggregate',
     'ZScoreBoundary',
@@ -73,41 +72,96 @@ class PipelinedCall:
         self.is_blocking = is_blocking
 
 
+class MultiBulkReply:
+    """
+    Container for a multi bulk reply.
+    """
+    def __init__(self, protocol, count):
+        self.queue = Queue()
+        self.protocol = protocol
+        self.count = count
+
+    def iter_raw(self):
+        """
+        Iterate over all multi bulk packets. This yields futures that won't
+        decode bytes yet.
+        """
+        for i in range(self.count):
+            yield self.queue.get()
+
+    def __iter__(self):
+        """
+        Iterate over the reply. This yields futures of the decoded packets. It
+        decode bytes automatically using protocol.decode_to_native.
+        """
+        @asyncio.coroutine
+        def auto_decode(f):
+            result = yield from f
+            if isinstance(result, (StatusReply, int, float)):
+                return result
+            elif isinstance(result, bytes):
+                return self.protocol.decode_to_native(result)
+            else:
+                raise AssertionError('Invalid type')
+
+        for f in self.iter_raw():
+            yield auto_decode(f)
+
+
 class _PostProcessor:
     @asyncio.coroutine
-    def multibulk_as_list(result):
+    def multibulk_as_list(protocol, result):
         assert isinstance(result, MultiBulkReply)
         return ListReply(result)
 
     @asyncio.coroutine
-    def multibulk_as_set(result):
+    def multibulk_as_set(protocol, result):
         assert isinstance(result, MultiBulkReply)
         return SetReply(result)
 
     @asyncio.coroutine
-    def multibulk_as_dict(result):
+    def multibulk_as_dict(protocol, result):
         assert isinstance(result, MultiBulkReply)
         return DictReply(result)
 
     @asyncio.coroutine
-    def multibulk_as_zrangeresult(result):
+    def multibulk_as_zrangeresult(protocol, result):
         assert isinstance(result, MultiBulkReply)
         return ZRangeReply(result)
 
     @asyncio.coroutine
-    def multibulk_as_blocking_pop_reply(result):
+    def multibulk_as_blocking_pop_reply(protocol, result):
         assert isinstance(result, MultiBulkReply)
-        list_name, value = (yield from result.get_as_list())
+        list_name, value = yield from ListReply(result).get_as_list()
         return BlockingPopReply(list_name, value)
 
     @asyncio.coroutine
-    def int_to_bool(result):
+    def int_to_bool(protocol, result):
         assert isinstance(result, int)
         return bool(result) # Convert int to bool
 
     @asyncio.coroutine
-    def str_to_float(result):
-        assert isinstance(result, str)
+    def bytes_to_native(protocol, result):
+        if not isinstance(result, bytes):
+            import pdb; pdb.set_trace()
+
+        assert isinstance(result, bytes)
+        return protocol.decode_to_native(result)
+
+    @asyncio.coroutine
+    def bytes_to_native_or_none(protocol, result):
+        if result is None:
+            return result
+        else:
+            if not isinstance(result, bytes):
+                import pdb; pdb.set_trace()
+
+            assert isinstance(result, bytes)
+            return protocol.decode_to_native(result)
+
+    @asyncio.coroutine
+    def bytes_to_float(protocol, result):
+        assert isinstance(result, bytes)
         return float(result)
 
 
@@ -433,7 +487,7 @@ class RedisProtocol(asyncio.Protocol):
         self._bulk_reply_buffer += b'\r\n'
 
         if len(self._bulk_reply_buffer) > self._bulk_reply_len:
-            value = self.decode_to_native(self._bulk_reply_buffer[:self._bulk_reply_len])
+            value = self._bulk_reply_buffer[:self._bulk_reply_len]
 
             # Bulk reply came in.
             self._push_answer(value)
@@ -446,7 +500,7 @@ class RedisProtocol(asyncio.Protocol):
         count = int(line)
 
         # Create a queue for receiving the multi-bulk reply
-        reply = MultiBulkReply(count)
+        reply = MultiBulkReply(self, count)
 
         # Return the empty queue immediately as an answer.
         if self._in_pubsub:
@@ -474,7 +528,7 @@ class RedisProtocol(asyncio.Protocol):
 
     @asyncio.coroutine
     def _handle_pubsub_multibulk_reply(self, multibulk_reply):
-        result = yield from multibulk_reply.get_as_list()
+        result = yield from ListReply(multibulk_reply).get_as_list()
         assert result[0] == u'message'
         channel, value = result[1], result[2]
         yield from self._messages_queue.put(PubSubReply(channel, value))
@@ -517,7 +571,7 @@ class RedisProtocol(asyncio.Protocol):
             return f
         else:
             if post_process_func:
-                result = yield from post_process_func(result)
+                result = yield from post_process_func(self, result)
             if call:
                 self._pipelined_calls.remove(call)
             return result
@@ -564,7 +618,8 @@ class RedisProtocol(asyncio.Protocol):
     @_command
     def get(self, key:NativeType) -> (NativeType, NoneType):
         """ Get the value of a key """
-        return self._query(b'get', self.encode_from_native(key))
+        return self._query(b'get', self.encode_from_native(key),
+                post_process_func=_PostProcessor.bytes_to_native_or_none)
 
     @_command
     def mget(self, keys:ListOf(NativeType)) -> ListReply:
@@ -584,9 +639,10 @@ class RedisProtocol(asyncio.Protocol):
         return self._query(b'append', self.encode_from_native(key), self.encode_from_native(value))
 
     @_command
-    def getset(self, key:NativeType, value:NativeType):
+    def getset(self, key:NativeType, value:NativeType) -> (NativeType, NoneType):
         """ Set the string value of a key and return its old value """
-        return self._query(b'getset', self.encode_from_native(key), self.encode_from_native(value))
+        return self._query(b'getset', self.encode_from_native(key), self.encode_from_native(value),
+                post_process_func=_PostProcessor.bytes_to_native_or_none)
 
     @_command
     def incr(self, key:NativeType) -> int:
@@ -611,7 +667,7 @@ class RedisProtocol(asyncio.Protocol):
     @_command
     def randomkey(self) -> NativeType:
         """ Return a random key from the keyspace """
-        return self._query(b'randomkey')
+        return self._query(b'randomkey', post_process_func=_PostProcessor.bytes_to_native)
 
     @_command
     def exists(self, key:NativeType) -> bool:
@@ -688,11 +744,12 @@ class RedisProtocol(asyncio.Protocol):
     # Keys
 
     @_command
-    def keys(self, pattern:NativeType) -> MultiBulkReply:
+    def keys(self, pattern:NativeType) -> ListReply:
         """
         Find all keys matching the given pattern.
         """
-        return self._query(b'keys', self.encode_from_native(pattern))
+        return self._query(b'keys', self.encode_from_native(pattern),
+                post_process_func=_PostProcessor.multibulk_as_list)
 
     @_command
     def dump(self, key:NativeType):
@@ -750,15 +807,14 @@ class RedisProtocol(asyncio.Protocol):
     @_command
     def spop(self, key:NativeType) -> NativeType:
         """ Removes and returns a random element from the set value stored at key. """
-        return self._query(b'spop', self.encode_from_native(key))
+        return self._query(b'spop', self.encode_from_native(key), post_process_func=_PostProcessor.bytes_to_native)
 
     @_command
-    def srandmember(self, key:NativeType, count:int=1) -> ListReply: # TODO: Isn't a SetReply more logical?
+    def srandmember(self, key:NativeType, count:int=1) -> SetReply:
         """ Get one or multiple random members from a set
-        (Returns a list of members, even when count==1)
-        """
+        (Returns a list of members, even when count==1) """
         return self._query(b'srandmember', self.encode_from_native(key), self._encode_int(count),
-                post_process_func=_PostProcessor.multibulk_as_list)
+                post_process_func=_PostProcessor.multibulk_as_set)
 
     @_command
     def sismember(self, key:NativeType, value:NativeType) -> bool:
@@ -862,22 +918,26 @@ class RedisProtocol(asyncio.Protocol):
     @_command
     def lpop(self, key:NativeType) -> (NativeType, NoneType):
         """ Remove and get the first element in a list """
-        return self._query(b'lpop', self.encode_from_native(key))
+        return self._query(b'lpop', self.encode_from_native(key),
+                post_process_func=_PostProcessor.bytes_to_native_or_none)
 
     @_command
     def rpop(self, key:NativeType) -> (NativeType, NoneType):
         """ Remove and get the last element in a list """
-        return self._query(b'rpop', self.encode_from_native(key))
+        return self._query(b'rpop', self.encode_from_native(key),
+                post_process_func=_PostProcessor.bytes_to_native_or_none)
 
     @_command
     def rpoplpush(self, source:NativeType, destination:NativeType) -> NativeType:
         """ Remove the last element in a list, append it to another list and return it """
-        return self._query(b'rpoplpush', self.encode_from_native(source), self.encode_from_native(destination))
+        return self._query(b'rpoplpush', self.encode_from_native(source), self.encode_from_native(destination),
+                    post_process_func=_PostProcessor.bytes_to_native)
 
     @_command
     def lindex(self, key:NativeType, index:int) -> (NativeType, NoneType):
         """ Get an element from a list by its index """
-        return self._query(b'lindex', self.encode_from_native(key), self._encode_int(index))
+        return self._query(b'lindex', self.encode_from_native(key), self._encode_int(index),
+                post_process_func=_PostProcessor.bytes_to_native_or_none)
 
     @_command
     def blpop(self, keys:ListOf(NativeType), timeout:int=0) -> BlockingPopReply:
@@ -893,7 +953,7 @@ class RedisProtocol(asyncio.Protocol):
     def brpoplpush(self, source:NativeType, destination:NativeType, timeout:int=0) -> NativeType:
         """ Pop a value from a list, push it to another list and return it; or block until one is available """
         return self._query(b'brpoplpush', self.encode_from_native(source), self.encode_from_native(destination),
-                    self._encode_int(timeout), set_blocking=True)
+                    self._encode_int(timeout), set_blocking=True, post_process_func=_PostProcessor.bytes_to_native)
 
     def _blocking_pop(self, keys, timeout:int=0, right:bool=False):
         command = b'brpop' if right else b'blpop'
@@ -1051,7 +1111,7 @@ class RedisProtocol(asyncio.Protocol):
         """ Increment the score of a member in a sorted set """
         return self._query(b'zincrby', self.encode_from_native(key),
                     self._encode_float(increment), self.encode_from_native(member),
-                    post_process_func=_PostProcessor.str_to_float)
+                    post_process_func=_PostProcessor.bytes_to_float)
 
     @_command
     def zrem(self, key:NativeType, members:ListOf(NativeType)) -> int:
@@ -1091,7 +1151,8 @@ class RedisProtocol(asyncio.Protocol):
     @_command
     def hget(self, key:NativeType, field:NativeType) -> (NativeType, NoneType):
         """ Get the value of a hash field """
-        return self._query(b'hget', self.encode_from_native(key), self.encode_from_native(field))
+        return self._query(b'hget', self.encode_from_native(key), self.encode_from_native(field),
+                post_process_func=_PostProcessor.bytes_to_native_or_none)
 
     @_command
     def hexists(self, key:NativeType, field:NativeType) -> bool:
@@ -1140,7 +1201,7 @@ class RedisProtocol(asyncio.Protocol):
         """ Increment the float value of a hash field by the given amount
         Returns: the value at field after the increment operation. """
         return self._query(b'hincrbyfloat', self.encode_from_native(key), self.encode_from_native(field), self._encode_float(increment),
-                post_process_func=_PostProcessor.str_to_float)
+                post_process_func=_PostProcessor.bytes_to_float)
 
     # Pubsub
 
@@ -1151,10 +1212,11 @@ class RedisProtocol(asyncio.Protocol):
         if self.in_transaction:
             raise RedisException('Cannot call subscribe inside a transaction.')
 
-        multibulk = yield from self._query(b'subscribe', *map(self.encode_from_native, channels))
+        list_reply = yield from self._query(b'subscribe', *map(self.encode_from_native, channels), post_process_func=_PostProcessor.multibulk_as_list)
+        result = yield from list_reply.get_as_list()
 
         # Something like [ 'subscribe', 'our_channel', 1]
-        result = yield from multibulk.get_as_list()
+        #result = yield from multibulk.get_as_list()
         assert result[0] == u'subscribe'
 
         if not self._in_pubsub:
@@ -1187,7 +1249,8 @@ class RedisProtocol(asyncio.Protocol):
     @_command
     def echo(self, string:NativeType) -> NativeType:
         """ Echo the given string """
-        return self._query(b'echo', self.encode_from_native(string))
+        return self._query(b'echo', self.encode_from_native(string),
+                    post_process_func=_PostProcessor.bytes_to_native)
 
     @_command
     def save(self) -> StatusReply:
@@ -1292,8 +1355,10 @@ class RedisProtocol(asyncio.Protocol):
         if multi_bulk_reply is None:
             # We get None when a transaction failed.
             raise RedisException('Transaction failed.') # XXX test this
+        else:
+            assert isinstance(multi_bulk_reply, MultiBulkReply)
 
-        for f in multi_bulk_reply:
+        for f in multi_bulk_reply.iter_raw():
             answer = yield from f
             f2, post_process_func, call = futures_and_postprocessors.popleft()
 
@@ -1301,7 +1366,7 @@ class RedisProtocol(asyncio.Protocol):
                 f2.set_exception(answer)
             else:
                 if post_process_func:
-                    answer = yield from post_process_func(answer)
+                    answer = yield from post_process_func(self, answer)
                 if call:
                     self._pipelined_calls.remove(call)
 

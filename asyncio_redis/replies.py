@@ -6,7 +6,6 @@ __all__ = (
     'BlockingPopReply',
     'DictReply',
     'ListReply',
-    'MultiBulkReply',
     'PubSubReply',
     'SetReply',
     'StatusReply',
@@ -28,38 +27,6 @@ class StatusReply:
 
     def __eq__(self, other):
         return self.status == other.status
-
-
-class MultiBulkReply:
-    """
-    Container for a multi bulk reply.
-    There are two ways of retrieving the content:
-
-    1. you call ``yield from get_as_list()`` which returns when all the
-       items arrived;
-
-    2. or you iterate over it for every item, using this pattern:
-
-    ::
-
-        for f in multi_bulk_reply:
-            item = yield from f
-            print(item)
-    """
-    def __init__(self, count):
-        self.queue = Queue()
-        self.count = count
-
-    def __iter__(self):
-        for i in range(self.count):
-            yield self.queue.get()
-
-    def get_as_list(self):
-        """
-        Wait for all of the items of the multibulk reply to come in.
-        and return it as a list.
-        """
-        return gather(*list(self))
 
 
 class DictReply:
@@ -117,9 +84,7 @@ class SetReply:
     """
     Redis set result.
     The content can be retrieved by calling ``get_as_set`` or by
-    iterating over it:
-
-    ::
+    iterating over it::
 
         for f in set_reply:
             item = yield from f
@@ -134,12 +99,21 @@ class SetReply:
 
     @asyncio.coroutine
     def get_as_set(self):
-        """ Return the result as a Python set.  """
-        result = yield from self._result.get_as_list()
+        """ Return the result as a Python ``set``.  """
+        result = yield from gather(* list(self._result))
         return set(result)
 
 
 class ListReply:
+    """
+    Redis list result.
+    The content can be retrieved by calling ``get_as_list`` or by
+    iterating over it::
+
+        for f in list_reply:
+            item = yield from f
+            print(item)
+    """
     def __init__(self, multibulk_reply):
         self._result = multibulk_reply
 
@@ -148,8 +122,8 @@ class ListReply:
         return iter(self._result)
 
     def get_as_list(self):
-        """ Return the result as a Python set.  """
-        return self._result.get_as_list()
+        """ Return the result as a Python ``list``. """
+        return gather(* list(self._result))
 
 
 class BlockingPopReply:
@@ -170,7 +144,7 @@ class BlockingPopReply:
 
 
 class SubscribeReply:
-    """ Answer to subscribe command. """
+    """ Reply to subscribe command. """
     def __init__(self, channel):
         self._channel = channel
 

@@ -11,7 +11,7 @@ from collections import deque
 from functools import wraps
 from inspect import getfullargspec, formatargspec, getcallargs
 
-from .exceptions import RedisException
+from .exceptions import RedisException, TransactionError
 from .replies import *
 
 __all__ = (
@@ -501,6 +501,12 @@ class RedisProtocol(asyncio.Protocol):
 
     def _handle_multi_bulk_reply(self, line):
         count = int(line)
+
+        # Handle multi-bulk none.
+        # (Used when a transaction exec fails.)
+        if count == -1:
+            self._push_answer(None)
+            return
 
         # Create a queue for receiving the multi-bulk reply
         reply = MultiBulkReply(self, count)
@@ -1299,7 +1305,7 @@ class RedisProtocol(asyncio.Protocol):
 
     @_command
     @asyncio.coroutine
-    def multi(self, keys:(ListOf(NativeType),NoneType)=None):
+    def multi(self, watch:(ListOf(NativeType),NoneType)=None):
         """
         Start of transaction.
 
@@ -1324,9 +1330,9 @@ class RedisProtocol(asyncio.Protocol):
             raise RedisException('Multi calls can not be nested.')
 
         # Call watch
-        if keys is not None:
-            for k in keys:
-                result = yield from self._query(b'watch', self.encode_from_native(k)) # XXX: unittest
+        if watch is not None:
+            for k in watch:
+                result = yield from self._query(b'watch', self.encode_from_native(k))
                 assert result == StatusReply('OK')
 
         # Call multi
@@ -1357,7 +1363,7 @@ class RedisProtocol(asyncio.Protocol):
 
         if multi_bulk_reply is None:
             # We get None when a transaction failed.
-            raise RedisException('Transaction failed.') # XXX test this
+            raise TransactionError('Transaction failed.')
         else:
             assert isinstance(multi_bulk_reply, MultiBulkReply)
 

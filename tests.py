@@ -5,7 +5,7 @@ from asyncio.futures import Future
 from asyncio.protocols import SubprocessProtocol
 from asyncio.tasks import gather
 
-from asyncio_redis import RedisProtocol, RedisBytesProtocol, Connection, Transaction, RedisException, StatusReply, ZRangeReply, ZScoreBoundary, BlockingPopReply, SubscribeReply, PubSubReply, ListReply, SetReply, DictReply
+from asyncio_redis import RedisProtocol, RedisBytesProtocol, Connection, Transaction, RedisException, StatusReply, ZRangeReply, ZScoreBoundary, BlockingPopReply, SubscribeReply, PubSubReply, ListReply, SetReply, DictReply, TransactionError
 from threading import Thread
 from time import sleep
 
@@ -1252,6 +1252,55 @@ class RedisConnectionTest(unittest.TestCase):
 
             self.assertEqual(result1, u'value')
             self.assertEqual(result2, u'value2')
+
+        self.loop.run_until_complete(test())
+
+    def test_watch(self):
+        """
+        Test a transaction, using watch
+        """
+        # Test using the watched key inside the transaction.
+        @asyncio.coroutine
+        def test():
+            # Setup
+            connection = yield from Connection.create(port=PORT, poolsize=3)
+            yield from connection.set(u'key', u'0')
+            yield from connection.set(u'other_key', u'0')
+
+            # Test
+            t = yield from connection.multi(watch=['other_key'])
+            f = yield from t.set(u'key', u'value')
+            f2 = yield from t.set(u'other_key', u'my_value')
+            yield from t.exec()
+
+            # Check
+            result = yield from connection.get(u'key')
+            self.assertEqual(result, u'value')
+            result = yield from connection.get(u'other_key')
+            self.assertEqual(result, u'my_value')
+
+        self.loop.run_until_complete(test())
+
+        # Test using the watched key outside the transaction.
+        # (the transaction should fail in this case.)
+        @asyncio.coroutine
+        def test():
+            # Setup
+            connection = yield from Connection.create(port=PORT, poolsize=3)
+            yield from connection.set(u'key', u'0')
+            yield from connection.set(u'other_key', u'0')
+
+            # Test
+            t = yield from connection.multi(watch=['other_key'])
+            yield from connection.set('other_key', 'other_value')
+            yield from t.set(u'other_key', u'value')
+
+            with self.assertRaises(TransactionError):
+                yield from t.exec()
+
+            # Check
+            result = yield from connection.get(u'other_key')
+            self.assertEqual(result, u'other_value')
 
         self.loop.run_until_complete(test())
 

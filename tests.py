@@ -778,8 +778,6 @@ class RedisProtocolTest(unittest.TestCase):
         value = yield from protocol.zscore('myzset', 'key')
         self.assertEqual(value, 4.0)
 
-
-
     @redis_test
     def test_zset(self, transport, protocol):
         yield from protocol.delete([ 'myzset' ])

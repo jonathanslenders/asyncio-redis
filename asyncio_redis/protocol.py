@@ -161,6 +161,13 @@ class _PostProcessor:
             return protocol.decode_to_native(result)
 
     @asyncio.coroutine
+    def bytes_to_float_or_none(protocol, result):
+        if result is None:
+            return result
+        assert isinstance(result, bytes)
+        return float(result)
+
+    @asyncio.coroutine
     def bytes_to_float(protocol, result):
         assert isinstance(result, bytes)
         return float(result)
@@ -1066,9 +1073,10 @@ class RedisProtocol(asyncio.Protocol):
                     self._encode_zscore_boundary(min), self._encode_zscore_boundary(max))
 
     @_command
-    def zscore(self, key:NativeType, member:NativeType) -> float:
+    def zscore(self, key:NativeType, member:NativeType) -> (float, NoneType):
         """ Get the score associated with the given member in a sorted set """
-        return self._query(b'zscore', self.encode_from_native(key), self.encode_from_native(member))
+        return self._query(b'zscore', self.encode_from_native(key), self.encode_from_native(member),
+                           post_process_func=_PostProcessor.bytes_to_float_or_none)
 
     @_command
     def zunionstore(self, destination:NativeType, keys:ListOf(NativeType), weights:(NoneType,ListOf(float))=None,

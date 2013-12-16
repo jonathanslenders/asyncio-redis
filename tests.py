@@ -77,6 +77,8 @@ class RedisProtocolTest(unittest.TestCase):
 
     @redis_test
     def test_setnx(self, transport, protocol):
+        yield from protocol.delete(u'my_key')
+
         # Setnx while key does not exists
         value = yield from protocol.setnx(u'my_key', u'my_value')
         self.assertEqual(value, True)

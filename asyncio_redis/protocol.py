@@ -639,6 +639,15 @@ class RedisProtocol(asyncio.Protocol):
                            self._encode_int(seconds), self.encode_from_native(value))
 
     @_command
+    def setnx(self, key:NativeType, value:NativeType) -> bool:
+        """ Set the string value of a key if it does not exist.
+
+        Returns True if value is successfully set
+        """
+        return self._query(b'setnx', self.encode_from_native(key), self.encode_from_native(value),
+                           post_process_func=_PostProcessor.int_to_bool)
+
+    @_command
     def get(self, key:NativeType) -> (NativeType, NoneType):
         """ Get the value of a key """
         return self._query(b'get', self.encode_from_native(key),

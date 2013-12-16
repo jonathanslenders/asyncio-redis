@@ -89,6 +89,25 @@ class RedisProtocolTest(unittest.TestCase):
         value = yield from protocol.get(u'my_key')
         self.assertEqual(value, u'my_value')
 
+    @redis_test
+    def test_setnx(self, transport, protocol):
+        yield from protocol.delete([u'my_key'])
+
+        # Setnx while key does not exists
+        value = yield from protocol.setnx(u'my_key', u'my_value')
+        self.assertEqual(value, True)
+
+        # Get
+        value = yield from protocol.get(u'my_key')
+        self.assertEqual(value, u'my_value')
+
+        # Setnx if key exists
+        value = yield from protocol.setnx(u'my_key', u'other_value')
+        self.assertEqual(value, False)
+
+        # Get old value
+        value = yield from protocol.get(u'my_key')
+        self.assertEqual(value, u'my_value')
 
     @redis_test
     def test_with_spaces(self, transport, protocol):

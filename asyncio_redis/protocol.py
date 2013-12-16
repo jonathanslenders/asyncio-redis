@@ -473,6 +473,11 @@ class RedisProtocol(asyncio.Protocol):
         """ True when this protocol is in use. """
         return self.in_blocking_call or self.in_pubsub or self.in_transaction
 
+    @property
+    def is_connected(self):
+        """ True when the underlying transport is connected. """
+        return self._is_connected
+
     # Handle replies
 
     def _handle_status_reply(self, line):

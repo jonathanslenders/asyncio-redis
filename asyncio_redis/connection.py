@@ -1,6 +1,7 @@
 import asyncio
 from .protocol import RedisProtocol, RedisBytesProtocol, _all_commands
-from .exceptions import Error
+from .exceptions import NoAvailableConnectionsInPool
+
 
 __all__ = ('Connection', 'BytesConnection')
 
@@ -56,6 +57,13 @@ class Connection:
         """
         return sum([ 1 for transport, protocol in self._transport_protocol_pairs if protocol.in_use ])
 
+    @property
+    def connections_connected(self):
+        """
+        The amount of open TCP connections.
+        """
+        return sum([ 1 for transport, protocol in self._transport_protocol_pairs if protocol.is_connected ])
+
     def _get_free_protocol(self):
         """
         Return the next protocol instance that's not in use.
@@ -65,7 +73,7 @@ class Connection:
         self._shuffle_protocols()
 
         for transport, protocol in self._transport_protocol_pairs:
-            if not protocol.in_use:
+            if not protocol.in_use and protocol.is_connected:
                 return protocol
 
     def _shuffle_protocols(self):
@@ -88,7 +96,8 @@ class Connection:
         if protocol:
             return getattr(protocol, name)
         else:
-            raise Error('All connection in the pool are in use. Please increase the poolsize.')
+            raise NoAvailableConnectionsInPool('No available connections in the pool: size=%s, in_use=%s, connected=%s' % (
+                                self.poolsize, self.connections_in_use, self.connections_connected))
 
 
 class BytesConnection:

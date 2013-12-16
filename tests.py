@@ -5,7 +5,25 @@ from asyncio.futures import Future
 from asyncio.protocols import SubprocessProtocol
 from asyncio.tasks import gather
 
-from asyncio_redis import RedisProtocol, RedisBytesProtocol, Connection, Transaction, Error, StatusReply, ZRangeReply, ZScoreBoundary, BlockingPopReply, SubscribeReply, PubSubReply, ListReply, SetReply, DictReply, TransactionError, NotConnected
+from asyncio_redis import (
+        BlockingPopReply,
+        Connection,
+        DictReply,
+        Error,
+        ListReply,
+        NoAvailableConnectionsInPool,
+        NotConnected,
+        PubSubReply,
+        RedisBytesProtocol,
+        RedisProtocol,
+        SetReply,
+        StatusReply,
+        SubscribeReply,
+        Transaction,
+        TransactionError,
+        ZRangeReply,
+        ZScoreBoundary,
+)
 from threading import Thread
 from time import sleep
 
@@ -1174,9 +1192,9 @@ class RedisConnectionTest(unittest.TestCase):
             yield from asyncio.sleep(.1) # Sleep to make sure that the above coroutine started executing.
 
             # Run command in other thread.
-            with self.assertRaises(Error) as e:
+            with self.assertRaises(NoAvailableConnectionsInPool) as e:
                 yield from connection.set('key', 'value')
-            self.assertEqual(e.exception.args[0], 'All connection in the pool are in use. Please increase the poolsize.')
+            self.assertIn('No available connections in the pool', e.exception.args[0])
 
             self.assertEqual(connection.connections_in_use, 1)
 
@@ -1263,10 +1281,10 @@ class RedisConnectionTest(unittest.TestCase):
                 yield from asyncio.sleep(.1) # Sleep to make sure that the above coroutine started executing.
 
             # One more blocking call should fail.
-            with self.assertRaises(Error) as e:
+            with self.assertRaises(NoAvailableConnectionsInPool) as e:
                 yield from connection.delete([ 'my-list-one-more' ])
                 yield from connection.blpop(['my-list-one-more'])
-            self.assertEqual(e.exception.args[0], 'All connection in the pool are in use. Please increase the poolsize.')
+            self.assertIn('No available connections in the pool', e.exception.args[0])
 
         self.loop.run_until_complete(test())
 
@@ -1284,9 +1302,9 @@ class RedisConnectionTest(unittest.TestCase):
             t3 = yield from connection.multi()
 
             # Fourth transaction should fail. (Pool is full)
-            with self.assertRaises(Error) as e:
+            with self.assertRaises(NoAvailableConnectionsInPool) as e:
                 yield from connection.multi()
-            self.assertEqual(e.exception.args[0], 'All connection in the pool are in use. Please increase the poolsize.')
+            self.assertIn('No available connections in the pool', e.exception.args[0])
 
             # Run commands in transaction
             f1 = yield from t1.set(u'key', u'value')
@@ -1388,12 +1406,34 @@ class RedisConnectionTest(unittest.TestCase):
             transport, protocol = yield from self.loop.create_connection(RedisProtocol, 'localhost', PORT)
             yield from protocol.set('key', 'value')
 
+            # Close transport
+            self.assertEqual(protocol.is_connected, True)
             transport.close()
             yield from asyncio.sleep(.5)
+            self.assertEqual(protocol.is_connected, False)
 
             # Test get/set
             with self.assertRaises(NotConnected) as e:
                 yield from protocol.set('key', 'value')
+
+        self.loop.run_until_complete(test())
+
+        # Test connection lost in connection pool.
+        @asyncio.coroutine
+        def test():
+            # Create connection
+            connection = yield from Connection.create(port=PORT, poolsize=1)
+            yield from connection.set('key', 'value')
+
+            # Close transport
+            transport = connection._transport_protocol_pairs[0][0]
+            transport.close()
+            yield from asyncio.sleep(.5)
+
+            # Test get/set
+            with self.assertRaises(NoAvailableConnectionsInPool) as e:
+                yield from connection.set('key', 'value')
+            self.assertIn('No available connections in the pool: size=1, in_use=0, connected=0', e.exception.args[0])
 
         self.loop.run_until_complete(test())
 

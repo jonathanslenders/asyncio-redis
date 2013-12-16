@@ -2,6 +2,8 @@ __all__ = (
         'Error',
         'TransactionError',
         'NotConnected',
+        'ConnectionLost',
+        'NoAvailableConnectionsInPool',
 )
 
 
@@ -19,8 +21,8 @@ class TransactionError(Error):
 
 class NotConnected(Error):
     """ Protocol is not connected. """
-    def __init__(self):
-        super().__init__('Not connected')
+    def __init__(self, message='Not connected'):
+        super().__init__(message)
 
 
 class ConnectionLost(NotConnected):
@@ -30,4 +32,10 @@ class ConnectionLost(NotConnected):
     """
     def __init__(self, exc):
         pass
+
+
+class NoAvailableConnectionsInPool(NotConnected):
+    """
+    When the connection pool has no available connections.
+    """
 

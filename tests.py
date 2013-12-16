@@ -76,6 +76,21 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertEqual(value, u'new_value')
 
     @redis_test
+    def test_setex(self, transport, protocol):
+        # Set
+        value = yield from protocol.setex(u'my_key', 10, u'my_value')
+        self.assertEqual(value, StatusReply('OK'))
+
+        # TTL
+        value = yield from protocol.ttl(u'my_key')
+        self.assertIn(value, (10, 9)) # may be some delay
+
+        # Get
+        value = yield from protocol.get(u'my_key')
+        self.assertEqual(value, u'my_value')
+
+
+    @redis_test
     def test_with_spaces(self, transport, protocol):
         # Test some special unicode values and spaces.
         value = u'my value with special chars " # éçåø´¨åø´h '

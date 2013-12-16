@@ -625,6 +625,12 @@ class RedisProtocol(asyncio.Protocol):
         return self._query(b'set', self.encode_from_native(key), self.encode_from_native(value))
 
     @_command
+    def setex(self, key:NativeType, seconds:int, value:NativeType) -> StatusReply:
+        """ Set the string value of a key with expire """
+        return self._query(b'setex', self.encode_from_native(key),
+                           self._encode_int(seconds), self.encode_from_native(value))
+
+    @_command
     def get(self, key:NativeType) -> (NativeType, NoneType):
         """ Get the value of a key """
         return self._query(b'get', self.encode_from_native(key),

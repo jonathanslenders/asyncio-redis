@@ -22,11 +22,6 @@ __all__ = (
     'ZAggregate',
     'ZScoreBoundary',
 )
-__author__ = 'Jonathan Slenders'
-__doc__ = \
-"""
-Redis protocol implementation for asyncio (PEP 3156)
-"""
 
 NoneType = type(None)
 

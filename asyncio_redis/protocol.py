@@ -11,7 +11,7 @@ from collections import deque
 from functools import wraps
 from inspect import getfullargspec, formatargspec, getcallargs
 
-from .exceptions import RedisException, TransactionError
+from .exceptions import RedisException, TransactionError, NotConnected, ConnectionLost
 from .replies import *
 
 __all__ = (
@@ -236,6 +236,9 @@ def _command(method):
     # on the protocol, outside of transactions or from the transaction object.
     @wraps(method)
     def wrapper(self, *a, **kw):
+        if not self._is_connected:
+            raise NotConnected
+
         # When calling from a transaction, the first arg is the transaction object.
         if self.in_transaction and (len(a) == 0 or a[0] != self._transaction):
             raise RedisException('Cannot run command inside transaction')
@@ -348,6 +351,7 @@ class RedisProtocol(asyncio.Protocol):
         self.transport = transport
         self._queue = deque() # Input parser queues
         self._messages_queue = None # Pubsub queue
+        self._is_connected = True # True as long as the underlying transport is connected.
 
         # Input parser state
         self._buffer = b''
@@ -443,10 +447,12 @@ class RedisProtocol(asyncio.Protocol):
         logger.log(logging.INFO, 'EOF received in RedisProtocol')
 
     def connection_lost(self, exc):
+        self._is_connected = False
+
         # Raise exception on all waiting futures.
         while self._queue:
             f = self._queue.popleft()
-            f.set_exception(RedisException('Connection lost: %s' % exc))
+            f.set_exception(ConnectionLost(exc))
 
         logger.log(logging.INFO, 'Redis connection lost')
 

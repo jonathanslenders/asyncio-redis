@@ -5,7 +5,7 @@ from asyncio.futures import Future
 from asyncio.protocols import SubprocessProtocol
 from asyncio.tasks import gather
 
-from asyncio_redis import RedisProtocol, RedisBytesProtocol, Connection, Transaction, RedisException, StatusReply, ZRangeReply, ZScoreBoundary, BlockingPopReply, SubscribeReply, PubSubReply, ListReply, SetReply, DictReply, TransactionError
+from asyncio_redis import RedisProtocol, RedisBytesProtocol, Connection, Transaction, RedisException, StatusReply, ZRangeReply, ZScoreBoundary, BlockingPopReply, SubscribeReply, PubSubReply, ListReply, SetReply, DictReply, TransactionError, NotConnected
 from threading import Thread
 from time import sleep
 
@@ -1356,6 +1356,27 @@ class RedisConnectionTest(unittest.TestCase):
 
         self.loop.run_until_complete(test())
     '''
+
+    def test_connection_lost(self):
+        """
+        When the transport is closed, any further commands should raise
+        NotConnected. (Unless the transport would be auto-reconnecting and have
+        established a new connection.)
+        """
+        @asyncio.coroutine
+        def test():
+            # Create connection
+            transport, protocol = yield from self.loop.create_connection(RedisProtocol, 'localhost', PORT)
+            yield from protocol.set('key', 'value')
+
+            transport.close()
+            yield from asyncio.sleep(.5)
+
+            # Test get/set
+            with self.assertRaises(NotConnected) as e:
+                yield from protocol.set('key', 'value')
+
+        self.loop.run_until_complete(test())
 
 if __name__ == '__main__':
     unittest.main()

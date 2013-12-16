@@ -1,6 +1,6 @@
 import asyncio
 from .protocol import RedisProtocol, RedisBytesProtocol, _all_commands
-from .exceptions import RedisException
+from .exceptions import Error
 
 __all__ = ('Connection', 'BytesConnection')
 
@@ -88,7 +88,7 @@ class Connection:
         if protocol:
             return getattr(protocol, name)
         else:
-            raise RedisException('All connection in the pool are in use. Please increase the poolsize.')
+            raise Error('All connection in the pool are in use. Please increase the poolsize.')
 
 
 class BytesConnection:

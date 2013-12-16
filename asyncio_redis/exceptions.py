@@ -1,5 +1,5 @@
 __all__ = (
-        'RedisException',
+        'Error',
         'TransactionError',
         'NotConnected',
 )
@@ -9,20 +9,25 @@ __all__ = (
 # http://docs.python.org/3.3/tutorial/errors.html#user-defined-exceptions
 
 
-class RedisException(Exception):
-    pass
+class Error(Exception):
+    """ Base exception. """
 
 
-class TransactionError(RedisException):
-    pass
+class TransactionError(Error):
+    """ Transaction failed. """
 
 
-class NotConnected(RedisException):
+class NotConnected(Error):
+    """ Protocol is not connected. """
     def __init__(self):
         super().__init__('Not connected')
 
 
 class ConnectionLost(NotConnected):
+    """
+    Connection lost during query.
+    (Special case of NotConnected.)
+    """
     def __init__(self, exc):
         pass
 

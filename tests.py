@@ -5,7 +5,7 @@ from asyncio.futures import Future
 from asyncio.protocols import SubprocessProtocol
 from asyncio.tasks import gather
 
-from asyncio_redis import RedisProtocol, RedisBytesProtocol, Connection, Transaction, RedisException, StatusReply, ZRangeReply, ZScoreBoundary, BlockingPopReply, SubscribeReply, PubSubReply, ListReply, SetReply, DictReply, TransactionError, NotConnected
+from asyncio_redis import RedisProtocol, RedisBytesProtocol, Connection, Transaction, Error, StatusReply, ZRangeReply, ZScoreBoundary, BlockingPopReply, SubscribeReply, PubSubReply, ListReply, SetReply, DictReply, TransactionError, NotConnected
 from threading import Thread
 from time import sleep
 
@@ -124,7 +124,7 @@ class RedisProtocolTest(unittest.TestCase):
         value = yield from protocol.strlen(u'my_key2')
         self.assertEqual(value, 0)
 
-        with self.assertRaises(RedisException) as e:
+        with self.assertRaises(Error) as e:
             yield from protocol.strlen(u'my_key3')
         # Redis exception: b'ERR Operation against a key holding the wrong kind of value')
 
@@ -1038,12 +1038,12 @@ class RedisProtocolTest(unittest.TestCase):
             self.assertIsInstance(f, Future)
 
         # Running commands directly on protocol should fail.
-        with self.assertRaises(RedisException) as e:
+        with self.assertRaises(Error) as e:
             yield from protocol.set('a', 'b')
         self.assertEqual(e.exception.args[0], 'Cannot run command inside transaction')
 
         # Calling subscribe inside transaction should fail.
-        with self.assertRaises(RedisException) as e:
+        with self.assertRaises(Error) as e:
             yield from transaction.subscribe(['channel'])
         self.assertEqual(e.exception.args[0], 'Cannot call subscribe inside a transaction.')
 
@@ -1083,7 +1083,7 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertEqual(result, u'a')
 
         # Calling anything on the transaction after discard should fail.
-        with self.assertRaises(RedisException) as e:
+        with self.assertRaises(Error) as e:
             result = yield from transaction.get(u'my_key')
         self.assertEqual(e.exception.args[0], 'Transaction already finished or invalid.')
 
@@ -1092,7 +1092,7 @@ class RedisProtocolTest(unittest.TestCase):
         # That should fail.
         transaction = yield from protocol.multi()
 
-        with self.assertRaises(RedisException) as e:
+        with self.assertRaises(Error) as e:
             transaction = yield from transaction.multi()
         self.assertEqual(e.exception.args[0], 'Multi calls can not be nested.')
 
@@ -1155,7 +1155,7 @@ class RedisConnectionTest(unittest.TestCase):
             yield from asyncio.sleep(.1) # Sleep to make sure that the above coroutine started executing.
 
             # Run command in other thread.
-            with self.assertRaises(RedisException) as e:
+            with self.assertRaises(Error) as e:
                 yield from connection.set('key', 'value')
             self.assertEqual(e.exception.args[0], 'All connection in the pool are in use. Please increase the poolsize.')
 
@@ -1244,7 +1244,7 @@ class RedisConnectionTest(unittest.TestCase):
                 yield from asyncio.sleep(.1) # Sleep to make sure that the above coroutine started executing.
 
             # One more blocking call should fail.
-            with self.assertRaises(RedisException) as e:
+            with self.assertRaises(Error) as e:
                 yield from connection.delete([ 'my-list-one-more' ])
                 yield from connection.blpop(['my-list-one-more'])
             self.assertEqual(e.exception.args[0], 'All connection in the pool are in use. Please increase the poolsize.')
@@ -1265,7 +1265,7 @@ class RedisConnectionTest(unittest.TestCase):
             t3 = yield from connection.multi()
 
             # Fourth transaction should fail. (Pool is full)
-            with self.assertRaises(RedisException) as e:
+            with self.assertRaises(Error) as e:
                 yield from connection.multi()
             self.assertEqual(e.exception.args[0], 'All connection in the pool are in use. Please increase the poolsize.')
 

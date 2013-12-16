@@ -11,7 +11,7 @@ from collections import deque
 from functools import wraps
 from inspect import getfullargspec, formatargspec, getcallargs
 
-from .exceptions import RedisException, TransactionError, NotConnected, ConnectionLost
+from .exceptions import Error, TransactionError, NotConnected, ConnectionLost
 from .replies import *
 
 __all__ = (
@@ -241,7 +241,7 @@ def _command(method):
 
         # When calling from a transaction, the first arg is the transaction object.
         if self.in_transaction and (len(a) == 0 or a[0] != self._transaction):
-            raise RedisException('Cannot run command inside transaction')
+            raise Error('Cannot run command inside transaction')
         elif self.in_transaction:
             # In case of a transaction, we receive a Future
             typecheck_input(self, *a[1:], **kw)
@@ -487,7 +487,7 @@ class RedisProtocol(asyncio.Protocol):
         self._push_answer(int(line))
 
     def _handle_error_reply(self, line):
-        self._push_answer(RedisException(line))
+        self._push_answer(Error(line))
 
     def _handle_bulk_reply(self, line):
         if int(line) == -1:
@@ -569,7 +569,7 @@ class RedisProtocol(asyncio.Protocol):
                 self.transport.write(a)
                 self.transport.write(b'\r\n')
             else:
-                raise RedisException('Cannot encode %r' % type(a))
+                raise Error('Cannot encode %r' % type(a))
 
     @asyncio.coroutine
     def _get_answer(self, _bypass=False, post_process_func=None, call=None):
@@ -585,7 +585,7 @@ class RedisProtocol(asyncio.Protocol):
         if self._in_transaction and not _bypass:
             # When the connection is inside a transaction, the query will be queued.
             if result != StatusReply('QUEUED'):
-                raise RedisException('Expected to receive QUEUED for query in transaction, received %r.' % result)
+                raise Error('Expected to receive QUEUED for query in transaction, received %r.' % result)
 
             # Return a future which will contain the result when it arrives.
             f = Future()
@@ -1239,7 +1239,7 @@ class RedisProtocol(asyncio.Protocol):
     def subscribe(self, channels:ListOf(NativeType)) -> SubscribeReply:
         """ Listen for messages published to the given channels """
         if self.in_transaction:
-            raise RedisException('Cannot call subscribe inside a transaction.')
+            raise Error('Cannot call subscribe inside a transaction.')
 
         list_reply = yield from self._query(b'subscribe', *map(self.encode_from_native, channels), post_process_func=_PostProcessor.multibulk_as_list)
         result = yield from list_reply.get_as_list()
@@ -1347,7 +1347,7 @@ class RedisProtocol(asyncio.Protocol):
         :returns: A :class:`asyncio_redis.Transaction` instance.
         """
         if (self._in_transaction):
-            raise RedisException('Multi calls can not be nested.')
+            raise Error('Multi calls can not be nested.')
 
         # Call watch
         if watch is not None:
@@ -1373,7 +1373,7 @@ class RedisProtocol(asyncio.Protocol):
         Execute all commands issued after MULTI
         """
         if not self._in_transaction:
-            raise RedisException('Not in transaction')
+            raise Error('Not in transaction')
 
         futures_and_postprocessors = self._transaction_response_queue
         self._transaction_response_queue = None
@@ -1411,7 +1411,7 @@ class RedisProtocol(asyncio.Protocol):
         Discard all commands issued after MULTI
         """
         if not self._in_transaction:
-            raise RedisException('Not in transaction')
+            raise Error('Not in transaction')
 
         self._transaction_response_queue = deque()
         self._in_transaction = False
@@ -1425,7 +1425,7 @@ class RedisProtocol(asyncio.Protocol):
         Forget about all watched keys
         """
         if not self._in_transaction:
-            raise RedisException('Not in transaction')
+            raise Error('Not in transaction')
 
         result = yield from self._query(b'unwatch')
         assert result == StatusReply('OK')
@@ -1465,7 +1465,7 @@ class Transaction:
             raise AttributeError
 
         if self._protocol._transaction != self:
-            raise RedisException('Transaction already finished or invalid.')
+            raise Error('Transaction already finished or invalid.')
 
         method = getattr(self._protocol, name)
 

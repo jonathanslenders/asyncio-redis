@@ -778,6 +778,22 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertEqual(value, True)
 
     @redis_test
+    def test_zscore(self, transport, protocol):
+        yield from protocol.delete([ 'myzset' ])
+
+        # Test zscore return value for NIL server response
+        value = yield from protocol.zscore('myzset', 'key')
+        self.assertIsNone(value)
+
+        # zadd key 4.0
+        result = yield from protocol.zadd('myzset', { 'key': 4})
+        self.assertEqual(result, 1)
+
+        # Test zscore value for existing zset members
+        value = yield from protocol.zscore('myzset', 'key')
+        self.assertEqual(value, 4.0)
+
+    @redis_test
     def test_zset(self, transport, protocol):
         yield from protocol.delete([ 'myzset' ])
 

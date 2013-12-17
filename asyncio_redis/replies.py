@@ -38,7 +38,7 @@ class DictReply:
         return key, value
 
     def __iter__(self):
-        """ Yield a list of futures that yield {key: value } tuples. """
+        """ Yield a list of futures that yield { key: value } tuples. """
         i = iter(self._result)
 
         @asyncio.coroutine

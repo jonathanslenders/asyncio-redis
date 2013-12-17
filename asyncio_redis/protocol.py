@@ -261,7 +261,7 @@ def _command(method):
     # Use function annotations to generate param documentation.
 
     def get_name(type_):
-        """ Turn type annotation to doc string. """
+        """ Turn type annotation into doc string. """
         try:
             return {
                 MultiBulkReply: ":class:`asyncio_redis.MultiBulkReply`",
@@ -643,9 +643,7 @@ class RedisProtocol(asyncio.Protocol):
     @_command
     def setnx(self, key:NativeType, value:NativeType) -> bool:
         """ Set the string value of a key if it does not exist.
-
-        Returns True if value is successfully set
-        """
+        Returns True if value is successfully set """
         return self._query(b'setnx', self.encode_from_native(key), self.encode_from_native(value),
                            post_process_func=_PostProcessor.int_to_bool)
 

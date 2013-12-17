@@ -70,6 +70,7 @@ class RedisProtocolTest(unittest.TestCase):
     def test_ping(self, transport, protocol):
         result = yield from protocol.ping()
         self.assertEqual(result, StatusReply('PONG'))
+        self.assertEqual(repr(result), u"StatusReply(status='PONG')")
 
     @redis_test
     def test_echo(self, transport, protocol):
@@ -300,6 +301,7 @@ class RedisProtocolTest(unittest.TestCase):
         # Smembers
         value = yield from protocol.smembers(u'our_set')
         self.assertIsInstance(value, SetReply)
+        self.assertEqual(repr(value), u"SetReply(length=3)")
         value = yield from value.get_as_set()
         self.assertEqual(value, { u'a', u'b', u'c' })
 
@@ -428,6 +430,7 @@ class RedisProtocolTest(unittest.TestCase):
         # lrange
         value = yield from protocol.lrange(u'my_list')
         self.assertIsInstance(value, ListReply)
+        self.assertEqual(repr(value), u"ListReply(length=4)")
         value = yield from value.get_as_list()
         self.assertEqual(value, [ u'v2', 'v1', 'v3', 'v4'])
 
@@ -610,6 +613,7 @@ class RedisProtocolTest(unittest.TestCase):
 
         result = yield from protocol.hgetall(u'my_hash')
         self.assertIsInstance(result, DictReply)
+        self.assertEqual(repr(result), u"DictReply(length=2)")
         result = yield from result.get_as_dict()
         self.assertEqual(result, {u'key': u'value', u'key2': u'value2' })
 
@@ -707,6 +711,7 @@ class RedisProtocolTest(unittest.TestCase):
             self.assertEqual(protocol2.in_pubsub, False)
             value = yield from protocol2.subscribe([u'our_channel'])
             self.assertIsInstance(value, SubscribeReply)
+            self.assertEqual(repr(value), u"SubscribeReply(channel='our_channel')")
             self.assertEqual(value.channel, u'our_channel')
             self.assertEqual(protocol2.in_pubsub, True)
 
@@ -719,6 +724,7 @@ class RedisProtocolTest(unittest.TestCase):
             self.assertIsInstance(value, PubSubReply)
             self.assertEqual(value.channel, u'our_channel')
             self.assertEqual(value.value, u'message2')
+            self.assertEqual(repr(value), u"PubSubReply(channel='our_channel', value='message2')")
 
         f = asyncio.Task(listener())
 
@@ -863,6 +869,7 @@ class RedisProtocolTest(unittest.TestCase):
         # Test zrange
         result = yield from protocol.zrange('myzset')
         self.assertIsInstance(result, ZRangeReply)
+        self.assertEqual(repr(result), u"ZRangeReply(length=3)")
         self.assertEqual((yield from result.get_as_dict()),
                 { 'key': 4.0, 'key2': 5.0, 'key3': 5.5 })
 
@@ -1164,6 +1171,7 @@ class RedisConnectionTest(unittest.TestCase):
         def test():
             # Create connection
             connection = yield from Connection.create(port=PORT)
+            self.assertEqual(repr(connection), "Connection(host='localhost', port=%r, poolsize=1)" % PORT)
 
             # Test get/set
             yield from connection.set('key', 'value')
@@ -1218,7 +1226,9 @@ class RedisConnectionTest(unittest.TestCase):
                 for i in range(0, 5):
                     reply = yield from connection.blpop(['my-list'])
                     self.assertIsInstance(reply, BlockingPopReply)
+                    self.assertIsInstance(reply.value, str)
                     results.append(reply.value)
+                    self.assertIn(u"BlockingPopReply(list_name='my-list', value='", repr(reply))
 
             # Source: Push items on the queue
             @asyncio.coroutine

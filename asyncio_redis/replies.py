@@ -70,6 +70,9 @@ class DictReply:
             result += (yield from f).keys()
         return result
 
+    def __repr__(self):
+        return '%s(length=%r)' % (self.__class__.__name__, int(self._result.count / 2))
+
 
 class ZRangeReply(DictReply):
     """
@@ -103,6 +106,9 @@ class SetReply:
         result = yield from gather(* list(self._result))
         return set(result)
 
+    def __repr__(self):
+        return 'SetReply(length=%r)' % (self._result.count)
+
 
 class ListReply:
     """
@@ -125,6 +131,9 @@ class ListReply:
         """ Return the result as a Python ``list``. """
         return gather(* list(self._result))
 
+    def __repr__(self):
+        return 'ListReply(length=%r)' % (self._result.count)
+
 
 class BlockingPopReply:
     """ ``blpop`` or ``brpop`` reply """
@@ -142,6 +151,9 @@ class BlockingPopReply:
         """ Popped value """
         return self._value
 
+    def __repr__(self):
+        return 'BlockingPopReply(list_name=%r, value=%r)' % (self.list_name, self.value)
+
 
 class SubscribeReply:
     """ Reply to subscribe command. """
@@ -152,6 +164,9 @@ class SubscribeReply:
     def channel(self):
         """ Channel name. """
         return self._channel
+
+    def __repr__(self):
+        return 'SubscribeReply(channel=%r)' % self.channel
 
 
 class PubSubReply:
@@ -169,3 +184,6 @@ class PubSubReply:
     def value(self):
         """ Received PubSub value """
         return self._value
+
+    def __repr__(self):
+        return 'PubSubReply(channel=%r, value=%r)' % (self.channel, self.value)

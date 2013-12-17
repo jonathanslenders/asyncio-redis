@@ -75,7 +75,7 @@ class MultiBulkReply:
     def __init__(self, protocol, count):
         self.queue = Queue()
         self.protocol = protocol
-        self.count = count
+        self.count = int(count)
 
     def iter_raw(self):
         """
@@ -102,6 +102,9 @@ class MultiBulkReply:
 
         for f in self.iter_raw():
             yield auto_decode(f)
+
+    def __repr__(self):
+        return 'MultiBulkReply(protocol=%r, count=%r)' % (self.protocol, self.count)
 
 
 class _PostProcessor:

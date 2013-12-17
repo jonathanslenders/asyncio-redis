@@ -34,6 +34,8 @@ class Connection:
         redis_protocol = type('RedisProtocol', (cls.protocol,), { 'password': password, 'db': db })
 
         self = cls()
+        self._host = host
+        self._port = port
         self._poolsize = poolsize
 
         # Create connections
@@ -44,6 +46,9 @@ class Connection:
             self._transport_protocol_pairs.append( (transport, protocol) )
 
         return self
+
+    def __repr__(self):
+        return 'Connection(host=%r, port=%r, poolsize=%r)' % (self._host, self._port, self._poolsize)
 
     @property
     def poolsize(self):

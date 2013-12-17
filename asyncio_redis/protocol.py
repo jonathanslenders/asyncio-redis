@@ -141,9 +141,6 @@ class _PostProcessor:
 
     @asyncio.coroutine
     def bytes_to_native(protocol, result):
-        if not isinstance(result, bytes):
-            import pdb; pdb.set_trace()
-
         assert isinstance(result, bytes)
         return protocol.decode_to_native(result)
 
@@ -152,9 +149,6 @@ class _PostProcessor:
         if result is None:
             return result
         else:
-            if not isinstance(result, bytes):
-                import pdb; pdb.set_trace()
-
             assert isinstance(result, bytes)
             return protocol.decode_to_native(result)
 

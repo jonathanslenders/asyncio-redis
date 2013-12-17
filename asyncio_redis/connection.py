@@ -40,7 +40,7 @@ class Connection:
         self._transport_protocol_pairs  = []
 
         for i in range(poolsize):
-            transport, protocol = yield from asyncio.Task(loop.create_connection(redis_protocol, host, port))
+            transport, protocol = yield from loop.create_connection(redis_protocol, host, port)
             self._transport_protocol_pairs.append( (transport, protocol) )
 
         return self

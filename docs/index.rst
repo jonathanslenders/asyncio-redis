@@ -5,19 +5,22 @@
 
 asyncio_redis
 =============
-Redis client for PEP 3156. (Tulip)
+
+Redis client for PEP 3156. (Tulip)  - `Github`_
+
+.. _GitHub: https://github.com/jonathanslenders/asyncio-redis
 
 Features
 --------
 
 - Works for the asyncio (PEP3156) event loop
 - No dependencies
-- Connection pooling
-- Automatic conversion from unicode (Python) to bytes (inside Redis.)
-- Bytes and str protocols.
-- Completely tested
+- Connection pooling and pipelining
+- Automatic conversion from native Python types (unicode or bytes) to Redis types (bytes).
 - Blocking calls and transactions supported
-- Streaming of some multi bulk replies
+- Pubsub support
+- Streaming of multi bulk replies
+- Completely tested
 
 Installation
 ------------

@@ -269,7 +269,7 @@ def _command(method):
                 ZScoreBoundary: ":class:`asyncio_redis.ZScoreBoundary`",
                 StatusReply: ":class:`asyncio_redis.StatusReply`",
                 ListReply: ":class:`asyncio_redis.ListReply`",
-                SetReply: ":class:`asyncio_redis.setReply`",
+                SetReply: ":class:`asyncio_redis.SetReply`",
                 DictReply: ":class:`asyncio_redis.DictReply`",
                 ZRangeReply: ":class:`asyncio_redis.ZRangeReply`",
                 BlockingPopReply: ":class:`asyncio_redis.BlockingPopReply`",

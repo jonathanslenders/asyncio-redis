@@ -18,6 +18,7 @@ __all__ = (
     'RedisProtocol',
     'RedisBytesProtocol',
     'Transaction',
+    'Subscription',
 
     'ZAggregate',
     'ZScoreBoundary',
@@ -245,6 +246,14 @@ def _command(method):
                 typecheck_return(self, result.result())
 
             return future
+        # When calling from a pubsub context
+        elif self.in_pubsub and (len(a) == 0 or a[0] != self._subscription):
+            raise Error('Cannot run command inside pubsub subscription.')
+        elif self.in_pubsub:
+            typecheck_input(self, *a[1:], **kw)
+            result = yield from method(self, *a[1:], **kw)
+            typecheck_return(self, result)
+            return result
         else:
             typecheck_input(self, *a, **kw)
             result = yield from method(self, *a, **kw)
@@ -273,7 +282,6 @@ def _command(method):
                 DictReply: ":class:`asyncio_redis.DictReply`",
                 ZRangeReply: ":class:`asyncio_redis.ZRangeReply`",
                 BlockingPopReply: ":class:`asyncio_redis.BlockingPopReply`",
-                SubscribeReply: ":class:`asyncio_redis.SubscribeReply`",
                 ZRangeReply: ":class:`asyncio_redis.ZRangeReply`",
                 NativeType: "Native Python type, as defined by ``RedisProtocol.native_type``",
                 NoneType: "None",
@@ -548,9 +556,15 @@ class RedisProtocol(asyncio.Protocol):
     @asyncio.coroutine
     def _handle_pubsub_multibulk_reply(self, multibulk_reply):
         result = yield from ListReply(multibulk_reply).get_as_list()
-        assert result[0] == u'message'
-        channel, value = result[1], result[2]
-        yield from self._messages_queue.put(PubSubReply(channel, value))
+        assert result[0] in ('message', 'subscribe', 'unsubscribe', 'psubscribe', 'punsubscribe')
+
+        if result[0] == 'message':
+            channel, value = result[1], result[2]
+            yield from self._subscription._messages_queue.put(PubSubReply(channel, value))
+        else:
+            # In case of 'subscribe'/'unsubscribe', we already converted the MultiBulkReply to a list,
+            # so we just hand over the list.
+            self._push_answer(result)
 
     # Redis operations.
 
@@ -1237,34 +1251,69 @@ class RedisProtocol(asyncio.Protocol):
                 post_process_func=_PostProcessor.bytes_to_float)
 
     # Pubsub
+    # (subscribe, unsubscribe, etc... should be called through the Subscription class.)
 
     @_command
     @asyncio.coroutine
-    def subscribe(self, channels:ListOf(NativeType)) -> SubscribeReply:
+    def start_subscribe(self): # -> Subscription:
+        """
+        Start a pubsub listener.
+
+        ::
+
+            # Create subscription
+            subscription = yield from protocol.start_subscribe()
+            yield from subscription.subscribe(['key'])
+            yield from subscription.psubscribe(['pattern*'])
+
+            while True:
+                result = yield from subscription.get_next_published()
+                print(result)
+
+        :returns: :class:`asyncio_redis.Subscription`
+        """
+        if self.in_use:
+            raise Error('Cannot start pubsub listener when a protocol is in use.')
+
+        subscription = Subscription(self)
+
+        self._in_pubsub = True
+        self._subscription = subscription
+        return subscription
+
+    @_command
+    def _subscribe(self, channels:ListOf(NativeType)):
         """ Listen for messages published to the given channels """
-        if self.in_transaction:
-            raise Error('Cannot call subscribe inside a transaction.')
+        return self._pubsub_method('subscribe', channels)
 
-        list_reply = yield from self._query(b'subscribe', *map(self.encode_from_native, channels), post_process_func=_PostProcessor.multibulk_as_list)
-        result = yield from list_reply.get_as_list()
+    @_command
+    def _unsubscribe(self, channels:ListOf(NativeType)): # TODO: unittest
+        """ Stop listening for messages posted to the given channels """
+        return self._pubsub_method('unsubscribe', channels)
 
-        # Something like [ 'subscribe', 'our_channel', 1]
-        #result = yield from multibulk.get_as_list()
-        assert result[0] == u'subscribe'
+    @_command
+    def _psubscribe(self, patterns:ListOf(NativeType)): # TODO: unittest
+        """ Listen for messages published to channels matching the given patterns """
+        return self._pubsub_method('psubscribe', patterns)
 
+    @_command
+    def _punsubscribe(self, patterns:ListOf(NativeType)): # TODO: unittest
+        """ Stop listening for messages posted to channels matching the given patterns """
+        return self._pubsub_method('punsubscribe', patterns)
+
+    def _pubsub_method(self, method, params):
         if not self._in_pubsub:
-            self._in_pubsub = True # Put this on True, only after the result has been received.
-            self._messages_queue = Queue() # Create pubsub queue
+            raise Error('Cannot call pubsub methods without calling start_subscribe')
 
-        return SubscribeReply(result[1])
+        # Send
+        result = yield from self._query(method.encode('ascii'), *map(self.encode_from_native, params))
 
-    def get_next_published(self):
-        """
-        Wait for next pubsub message to be received and return it.
+        # Note that in pubsub mode, this reply is processed by
+        # '_handle_pubsub_multibulk_reply', the result is directly unpacked as
+        # a list, so `result` here is a list.
 
-        :returns: instance of :class:`PubSubReply`
-        """
-        return self._messages_queue.get()
+        # Returns something like [ 'subscribe', 'our_channel', 1]
+        assert result[0] == method
 
     @_command
     def publish(self, channel:NativeType, message:NativeType) -> int:
@@ -1497,3 +1546,36 @@ class Transaction:
         Forget about all watched keys
         """
         return self._protocol._unwatch()
+
+
+class Subscription:
+    """
+    Pubsub subscription
+    """
+    def __init__(self, protocol):
+        self.protocol = protocol
+        self._messages_queue = Queue() # Pubsub queue
+
+    @wraps(RedisProtocol._subscribe)
+    def subscribe(self, channels):
+        return self.protocol._subscribe(self, channels)
+
+    @wraps(RedisProtocol._unsubscribe)
+    def unsubscribe(self, channels):
+        return self.protocol._unsubscribe(self, channels)
+
+    @wraps(RedisProtocol._psubscribe)
+    def psubscribe(self, patterns):
+        return self.protocol._psubscribe(self, patterns)
+
+    @wraps(RedisProtocol._punsubscribe)
+    def punsubscribe(self, patterns):
+        return self.protocol._punsubscribe(self, patterns)
+
+    def get_next_published(self):
+        """
+        Wait for next pubsub message to be received and return it.
+
+        :returns: instance of :class:`PubSubReply`
+        """
+        return self._messages_queue.get()

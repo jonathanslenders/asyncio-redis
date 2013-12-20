@@ -9,7 +9,6 @@ __all__ = (
     'PubSubReply',
     'SetReply',
     'StatusReply',
-    'SubscribeReply',
     'ZRangeReply',
 )
 
@@ -154,19 +153,6 @@ class BlockingPopReply:
     def __repr__(self):
         return 'BlockingPopReply(list_name=%r, value=%r)' % (self.list_name, self.value)
 
-
-class SubscribeReply:
-    """ Reply to subscribe command. """
-    def __init__(self, channel):
-        self._channel = channel
-
-    @property
-    def channel(self):
-        """ Channel name. """
-        return self._channel
-
-    def __repr__(self):
-        return 'SubscribeReply(channel=%r)' % self.channel
 
 
 class PubSubReply:

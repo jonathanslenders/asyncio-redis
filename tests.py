@@ -18,7 +18,7 @@ from asyncio_redis import (
         RedisProtocol,
         SetReply,
         StatusReply,
-        SubscribeReply,
+        Subscription,
         Transaction,
         TransactionError,
         ZRangeReply,
@@ -709,18 +709,19 @@ class RedisProtocolTest(unittest.TestCase):
 
             # Subscribe
             self.assertEqual(protocol2.in_pubsub, False)
-            value = yield from protocol2.subscribe([u'our_channel'])
-            self.assertIsInstance(value, SubscribeReply)
-            self.assertEqual(repr(value), u"SubscribeReply(channel='our_channel')")
-            self.assertEqual(value.channel, u'our_channel')
+            subscription = yield from protocol2.start_subscribe()
+            self.assertIsInstance(subscription, Subscription)
             self.assertEqual(protocol2.in_pubsub, True)
+            yield from subscription.subscribe([u'our_channel'])
+            #self.assertEqual(repr(value), u"SubscribeReply(channel='our_channel')")
+            #self.assertEqual(value.channel, u'our_channel')
 
-            value = yield from protocol2.get_next_published()
+            value = yield from subscription.get_next_published()
             self.assertIsInstance(value, PubSubReply)
             self.assertEqual(value.channel, u'our_channel')
             self.assertEqual(value.value, u'message1')
 
-            value = yield from protocol2.get_next_published()
+            value = yield from subscription.get_next_published()
             self.assertIsInstance(value, PubSubReply)
             self.assertEqual(value.channel, u'our_channel')
             self.assertEqual(value.value, u'message2')
@@ -1088,8 +1089,8 @@ class RedisProtocolTest(unittest.TestCase):
 
         # Calling subscribe inside transaction should fail.
         with self.assertRaises(Error) as e:
-            yield from transaction.subscribe(['channel'])
-        self.assertEqual(e.exception.args[0], 'Cannot call subscribe inside a transaction.')
+            yield from transaction.start_subscribe()
+        self.assertEqual(e.exception.args[0], 'Cannot start pubsub listener when a protocol is in use.')
 
         # Complete transaction
         result = yield from transaction.exec()

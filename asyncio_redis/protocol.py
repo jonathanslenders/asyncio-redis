@@ -19,6 +19,7 @@ __all__ = (
     'RedisBytesProtocol',
     'Transaction',
     'Subscription',
+    'Script',
 
     'ZAggregate',
     'ZScoreBoundary',
@@ -144,6 +145,11 @@ class _PostProcessor:
     def bytes_to_native(protocol, result):
         assert isinstance(result, bytes)
         return protocol.decode_to_native(result)
+
+    @asyncio.coroutine
+    def bytes_to_str(protocol, result):
+        assert isinstance(result, bytes)
+        return result.decode('ascii')
 
     @asyncio.coroutine
     def bytes_to_native_or_none(protocol, result):
@@ -289,6 +295,7 @@ def _command(method):
                 bool: 'bool',
                 dict: 'dict',
                 float: 'float',
+                str: 'str',
             }[type_]
         except KeyError:
             if isinstance(type_, ListOf):
@@ -1374,6 +1381,45 @@ class RedisProtocol(asyncio.Protocol):
         """ Determine the type stored at key """
         return self._query(b'type', self.encode_from_native(key))
 
+    # LUA scripting
+
+    @_command
+    @asyncio.coroutine
+    def register_script(self, script:str): # -> Script:
+        """
+        Register a LUA script.
+
+        ::
+
+            script = yield from protocol.register_script(lua_code)
+            script = yield from protocol.run_script(script, keys=[...], args=[...])
+            result = yield from script(keys=[...], args=[...])
+
+        :returns: :class:`asyncio_redis.Script`
+        """
+        # The register_script APi was made compatible with the redis.py library:
+        # https://github.com/andymccurdy/redis-py
+        sha = yield from self.script_load(script)
+        return Script(lambda:self, sha)
+
+    @_command
+    def evalsha(self, sha:str,
+                        keys:(ListOf(NativeType), NoneType)=None,
+                        args:(ListOf(NativeType), NoneType)=None) -> int: # XXX: verify typechecking.
+        """
+        Evaluates a script cached on the server side by its SHA1 digest.
+        Scripts are cached on the server side using the SCRIPT LOAD command.
+        """
+        return self._query(b'evalsha', sha.encode('ascii'),
+                        self._encode_int(len(keys)),
+                        *map(self.encode_from_native, keys + args))
+
+    @_command
+    def script_load(self, script:str) -> str:
+        """ Load script, returns sha1 """
+        return self._query(b'script', b'load', script.encode('ascii'),
+                    post_process_func=_PostProcessor.bytes_to_str)
+
     # Transaction
 
     @_command
@@ -1496,6 +1542,17 @@ class RedisBytesProtocol(RedisProtocol):
 
     def decode_to_native(self, data:bytes) -> bytes:
         return data
+
+
+class Script:
+    """ Lua script. """
+    def __init__(self, get_protocol, sha):
+        self.get_protocol = get_protocol
+        self.sha = sha
+
+    def __call__(self, keys=[], args=[], protocol=None):
+        """ Execute the script """
+        return (protocol or self.get_protocol()).evalsha(self.sha, keys, args)
 
 
 class Transaction:

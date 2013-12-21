@@ -16,6 +16,7 @@ from asyncio_redis import (
         PubSubReply,
         RedisBytesProtocol,
         RedisProtocol,
+        Script,
         SetReply,
         StatusReply,
         Subscription,
@@ -1056,6 +1057,23 @@ class RedisProtocolTest(unittest.TestCase):
     def test_dbsize(self, transport, protocol):
         result = yield from protocol.dbsize()
         self.assertIsInstance(result, int)
+
+    @redis_test
+    def test_lua_script(self, transport, protocol):
+        code = """
+        local value = redis.call('GET', KEYS[1])
+        value = tonumber(value)
+        return value * ARGV[1]
+        """
+        yield from protocol.set('foo', '2')
+
+        # Register script
+        script = yield from protocol.register_script(code)
+        self.assertIsInstance(script, Script)
+
+        # Call script.
+        result = yield from script(keys=['foo'], args=['5'])
+        self.assertEqual(result, 10)
 
     @redis_test
     def test_transaction(self, transport, protocol):

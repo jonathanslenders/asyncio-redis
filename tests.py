@@ -10,13 +10,16 @@ from asyncio_redis import (
         Connection,
         DictReply,
         Error,
+        ErrorReply,
         ListReply,
         NoAvailableConnectionsInPool,
+        NoRunningScriptError,
         NotConnected,
         PubSubReply,
         RedisBytesProtocol,
         RedisProtocol,
         Script,
+        ScriptKilledError,
         SetReply,
         StatusReply,
         Subscription,
@@ -163,7 +166,7 @@ class RedisProtocolTest(unittest.TestCase):
         value = yield from protocol.strlen(u'my_key2')
         self.assertEqual(value, 0)
 
-        with self.assertRaises(Error) as e:
+        with self.assertRaises(ErrorReply) as e:
             yield from protocol.strlen(u'my_key3')
         # Redis exception: b'ERR Operation against a key holding the wrong kind of value')
 
@@ -1074,6 +1077,65 @@ class RedisProtocolTest(unittest.TestCase):
         # Call script.
         result = yield from script(keys=['foo'], args=['5'])
         self.assertEqual(result, 10)
+
+        # Test evalsha directly
+        result = yield from protocol.evalsha(script.sha, keys=['foo'], args=['5'])
+        self.assertEqual(result, 10)
+
+        # Test script exists
+        result = yield from protocol.script_exists([ script.sha, script.sha, 'unknown-script' ])
+        self.assertEqual(result, [ True, True, False ])
+
+        # Test script flush
+        result = yield from protocol.script_flush()
+        self.assertEqual(result, StatusReply('OK'))
+
+        result = yield from protocol.script_exists([ script.sha, script.sha, 'unknown-script' ])
+        self.assertEqual(result, [ False, False, False ])
+
+    @redis_test
+    def test_script_return_types(self, transport, protocol):
+        #  Test whether LUA scripts are returning correct return values.
+        script_and_return_values = {
+            'return "string" ': "string", # str
+            'return 5 ': 5, # int
+            'return ': None, # NoneType
+        }
+        for code, return_value in script_and_return_values.items():
+            # Register script
+            script = yield from protocol.register_script(code)
+
+            # Call script.
+            result = yield from script()
+            self.assertEqual(result, return_value)
+
+    @redis_test
+    def test_script_kill(self, transport, protocol):
+        # Test script kill (when nothing is running.)
+        with self.assertRaises(NoRunningScriptError):
+            result = yield from protocol.script_kill()
+
+        # Test script kill (when a while/true is running.)
+
+        @asyncio.coroutine
+        def run_while_true():
+            code = """
+            local i = 0
+            while true do
+                i = i + 1
+            end
+            """
+            transport, protocol = yield from self.loop.create_connection(RedisProtocol, 'localhost', PORT)
+            script = yield from protocol.register_script(code)
+            with self.assertRaises(ScriptKilledError):
+                yield from script()
+
+        # (start script)
+        asyncio.Task(run_while_true())
+        yield from asyncio.sleep(.5)
+
+        result = yield from protocol.script_kill()
+        self.assertEqual(result, StatusReply('OK'))
 
     @redis_test
     def test_transaction(self, transport, protocol):

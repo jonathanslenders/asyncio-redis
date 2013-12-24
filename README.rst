@@ -82,10 +82,8 @@ will be used for new commands.
         print(result)
 
 
-Transactions
-------------
-
-Example:
+Transactions example
+--------------------
 
 .. code:: python
 
@@ -116,10 +114,8 @@ It's recommended to use a large enough poolsize. A connection will be occupied
 as long as there's a transaction running in there.
 
 
-Pubsub
-------
-
-Example:
+Pubsub example
+--------------
 
 .. code:: python
 

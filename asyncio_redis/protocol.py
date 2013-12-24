@@ -1446,7 +1446,7 @@ class RedisProtocol(asyncio.Protocol):
 
             # In case that we receive bytes, decode to string.
             if isinstance(result, bytes):
-                result = self.decode_to_native(result) # TODO: unittest
+                result = self.decode_to_native(result)
 
             return result
         except ErrorReply as e:

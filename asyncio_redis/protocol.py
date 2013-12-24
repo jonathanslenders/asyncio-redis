@@ -11,7 +11,7 @@ from collections import deque
 from functools import wraps
 from inspect import getfullargspec, formatargspec, getcallargs
 
-from .exceptions import Error, TransactionError, NotConnected, ConnectionLost
+from .exceptions import Error, ErrorReply, TransactionError, NotConnected, ConnectionLost, NoRunningScriptError, ScriptKilledError
 from .replies import *
 
 __all__ = (
@@ -19,6 +19,7 @@ __all__ = (
     'RedisBytesProtocol',
     'Transaction',
     'Subscription',
+    'Script',
 
     'ZAggregate',
     'ZScoreBoundary',
@@ -144,6 +145,11 @@ class _PostProcessor:
     def bytes_to_native(protocol, result):
         assert isinstance(result, bytes)
         return protocol.decode_to_native(result)
+
+    @asyncio.coroutine
+    def bytes_to_str(protocol, result):
+        assert isinstance(result, bytes)
+        return result.decode('ascii')
 
     @asyncio.coroutine
     def bytes_to_native_or_none(protocol, result):
@@ -273,22 +279,23 @@ def _command(method):
         """ Turn type annotation into doc string. """
         try:
             return {
-                MultiBulkReply: ":class:`asyncio_redis.MultiBulkReply`",
-                ZRangeReply: ":class:`asyncio_redis.ZRangeReply`",
-                ZScoreBoundary: ":class:`asyncio_redis.ZScoreBoundary`",
-                StatusReply: ":class:`asyncio_redis.StatusReply`",
-                ListReply: ":class:`asyncio_redis.ListReply`",
-                SetReply: ":class:`asyncio_redis.SetReply`",
-                DictReply: ":class:`asyncio_redis.DictReply`",
-                ZRangeReply: ":class:`asyncio_redis.ZRangeReply`",
                 BlockingPopReply: ":class:`asyncio_redis.BlockingPopReply`",
-                ZRangeReply: ":class:`asyncio_redis.ZRangeReply`",
+                DictReply: ":class:`asyncio_redis.DictReply`",
+                ListReply: ":class:`asyncio_redis.ListReply`",
+                MultiBulkReply: ":class:`asyncio_redis.MultiBulkReply`",
                 NativeType: "Native Python type, as defined by ``RedisProtocol.native_type``",
                 NoneType: "None",
+                SetReply: ":class:`asyncio_redis.SetReply`",
+                StatusReply: ":class:`asyncio_redis.StatusReply`",
+                ZRangeReply: ":class:`asyncio_redis.ZRangeReply`",
+                ZRangeReply: ":class:`asyncio_redis.ZRangeReply`",
+                ZRangeReply: ":class:`asyncio_redis.ZRangeReply`",
+                ZScoreBoundary: ":class:`asyncio_redis.ZScoreBoundary`",
                 int: 'int',
                 bool: 'bool',
                 dict: 'dict',
                 float: 'float',
+                str: 'str',
             }[type_]
         except KeyError:
             if isinstance(type_, ListOf):
@@ -492,7 +499,7 @@ class RedisProtocol(asyncio.Protocol):
         self._push_answer(int(line))
 
     def _handle_error_reply(self, line):
-        self._push_answer(Error(line))
+        self._push_answer(ErrorReply(line.decode('ascii')))
 
     def _handle_bulk_reply(self, line):
         if int(line) == -1:
@@ -1374,6 +1381,83 @@ class RedisProtocol(asyncio.Protocol):
         """ Determine the type stored at key """
         return self._query(b'type', self.encode_from_native(key))
 
+    # LUA scripting
+
+    @_command
+    def register_script(self, script:str): # -> Script:
+        """
+        Register a LUA script.
+
+        ::
+
+            script = yield from protocol.register_script(lua_code)
+            result = yield from script(keys=[...], args=[...])
+
+        :returns: :class:`asyncio_redis.Script`
+        """
+        # The register_script APi was made compatible with the redis.py library:
+        # https://github.com/andymccurdy/redis-py
+        sha = yield from self.script_load(script)
+        return Script(lambda:self, sha)
+
+    @_command
+    def script_exists(self, shas:ListOf(str)) -> ListOf(bool):
+        """ Check existence of scripts in the script cache. """
+        @asyncio.coroutine
+        def post_process(protocol, result):
+            # Turn the array of integers into booleans.
+            assert isinstance(result, MultiBulkReply)
+            values = yield from ListReply(result).get_as_list()
+            return [ bool(v) for v in values ]
+
+        return self._query(b'script', b'exists', *[ sha.encode('ascii') for sha in shas ],
+                    post_process_func=post_process)
+
+    @_command
+    def script_flush(self) -> StatusReply:
+        """ Remove all the scripts from the script cache. """
+        return self._query(b'script', b'flush')
+
+    @_command
+    def script_kill(self) -> StatusReply:
+        """ Kill the script currently in execution. """
+        try:
+            return (yield from self._query(b'script', b'kill'))
+        except ErrorReply as e:
+            if 'NOTBUSY' in e.args[0]:
+                raise NoRunningScriptError
+            else:
+                raise
+
+    @_command
+    def evalsha(self, sha:str,
+                        keys:(ListOf(NativeType), NoneType)=None,
+                        args:(ListOf(NativeType), NoneType)=None):
+        """
+        Evaluates a script cached on the server side by its SHA1 digest.
+        Scripts are cached on the server side using the SCRIPT LOAD command.
+
+        The return type/value depends on the script.
+        """
+        try:
+            result = yield from self._query(b'evalsha', sha.encode('ascii'),
+                        self._encode_int(len(keys)),
+                        *map(self.encode_from_native, keys + args))
+
+            # In case that we receive bytes, decode to string.
+            if isinstance(result, bytes):
+                result = self.decode_to_native(result) # TODO: unittest
+
+            return result
+        except ErrorReply as e:
+            raise ScriptKilledError
+
+    @_command
+    def script_load(self, script:str) -> str:
+        """ Load script, returns sha1 """
+        return self._query(b'script', b'load', script.encode('ascii'),
+                    post_process_func=_PostProcessor.bytes_to_str)
+
     # Transaction
 
     @_command
@@ -1496,6 +1580,17 @@ class RedisBytesProtocol(RedisProtocol):
 
     def decode_to_native(self, data:bytes) -> bytes:
         return data
+
+
+class Script:
+    """ Lua script. """
+    def __init__(self, get_protocol, sha):
+        self.get_protocol = get_protocol
+        self.sha = sha
+
+    def __call__(self, keys=[], args=[], protocol=None):
+        """ Execute the script """
+        return (protocol or self.get_protocol()).evalsha(self.sha, keys, args)
 
 
 class Transaction:

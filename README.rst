@@ -14,6 +14,8 @@ Features
 - Completely tested
 - Blocking calls and transactions supported
 - Streaming of some multi bulk replies
+- Pubsub support
+
 
 Installation
 ------------
@@ -113,6 +115,32 @@ Example:
 It's recommended to use a large enough poolsize. A connection will be occupied
 as long as there's a transaction running in there.
 
+
+Pubsub
+------
+
+Example:
+
+.. code:: python
+
+    import asyncio
+    from asyncio_redis import Connection
+
+    @asyncio.coroutine
+    def example():
+        # Create connection (you can also use Connection.create)
+        transport, protocol = yield from loop.create_connection(RedisProtocol, 'localhost', 6379)
+
+        # Create subscriber.
+        subscriber = yield from protocol.start_subscribe()
+
+        # Subscribe to channel.
+        yield from subscriber.subscribe([ 'our-channel' ])
+
+        # Inside a while loop, wait for incoming events.
+        while True:
+            reply = yield from subscriber.get_next_published()
+            print('Received: ', repr(reply.value), 'on channel', reply.channel)
 
 .. |Build Status| image:: https://travis-ci.org/jonathanslenders/asyncio-redis.png
     :target: https://travis-ci.org/jonathanslenders/asyncio-redis#

@@ -1612,15 +1612,15 @@ class Transaction:
         if name not in _all_commands:
             raise AttributeError
 
-        if self._protocol._transaction != self:
-            raise Error('Transaction already finished or invalid.')
-
         method = getattr(self._protocol, name)
 
         # Wrap the method into something that passes the transaction object as
         # first argument.
         @wraps(method)
         def wrapper(*a, **kw):
+            if self._protocol._transaction != self:
+                raise Error('Transaction already finished or invalid.')
+
             return method(self, *a, **kw)
         return wrapper
 

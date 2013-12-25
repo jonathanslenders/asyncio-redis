@@ -38,7 +38,7 @@ Example using the Protocol class
 .. code:: python
 
     import asyncio
-    from asyncio_redis import RedisProtocol
+    import asyncio_redis
 
     @asyncio.coroutine
     def example():
@@ -46,7 +46,7 @@ Example using the Protocol class
 
         # Create Redis connection
         transport, protocol = yield from loop.create_connection(
-                    RedisProtocol, 'localhost', 6379)
+                    asyncio_redis.RedisProtocol, 'localhost', 6379)
 
         # Set a key
         yield from protocol.set('my_key', 'my_value')
@@ -69,12 +69,12 @@ drops.
 .. code:: python
 
     import asyncio
-    from asyncio_redis import Connection
+    import asyncio_redis
 
     @asyncio.coroutine
     def example():
         # Create Redis connection
-        connection = yield from Connection.create(port=6379)
+        connection = yield from asyncio_redis.Connection.create(port=6379)
 
         # Set a key
         yield from connection.set('my_key', 'my_value')
@@ -91,12 +91,12 @@ connection will be used for new commands.
 .. code:: python
 
     import asyncio
-    from asyncio_redis import Pool
+    import asyncio_redis
 
     @asyncio.coroutine
     def example():
         # Create Redis connection
-        connection = yield from Pool.create(port=6379, poolsize=10)
+        connection = yield from asyncio_redis.Pool.create(port=6379, poolsize=10)
 
         # Set a key
         yield from connection.set('my_key', 'my_value')
@@ -108,12 +108,12 @@ Transactions example
 .. code:: python
 
     import asyncio
-    from asyncio_redis import Connection
+    import asyncio_redis
 
     @asyncio.coroutine
     def example():
         # Create Redis connection
-        connection = yield from Connection.create(port=6379, poolsize=10)
+        connection = yield from asyncio_redis.Connection.create('localhost', port=6379, poolsize=10)
 
         # Create transaction
         transaction = yield from connection.multi()
@@ -140,12 +140,12 @@ Pubsub example
 .. code:: python
 
     import asyncio
-    from asyncio_redis import Connection
+    import asyncio_redis
 
     @asyncio.coroutine
     def example():
         # Create connection (you can also use Connection.create)
-        connection = yield from Connection.create('localhost', 6379)
+        connection = yield from asyncio_redis.Connection.create('localhost', 6379)
 
         # Create subscriber.
         subscriber = yield from connection.start_subscribe()

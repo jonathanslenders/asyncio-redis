@@ -145,10 +145,10 @@ Pubsub example
     @asyncio.coroutine
     def example():
         # Create connection (you can also use Connection.create)
-        transport, protocol = yield from loop.create_connection(RedisProtocol, 'localhost', 6379)
+        connection = yield from Connection.create('localhost', 6379)
 
         # Create subscriber.
-        subscriber = yield from protocol.start_subscribe()
+        subscriber = yield from connection.start_subscribe()
 
         # Subscribe to channel.
         yield from subscriber.subscribe([ 'our-channel' ])

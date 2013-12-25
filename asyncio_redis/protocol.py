@@ -367,8 +367,13 @@ class RedisProtocol(asyncio.Protocol):
         self._bulk_reply_len = 0
         self._bulk_reply_buffer = b''
 
-        # State
+        # Pubsub state
         self._in_pubsub = False
+        self._subscription = None
+        self._pubsub_channels = set() # Set of channels
+        self._pubsub_patterns = set() # Set of patterns
+
+        # Pipelined calls
         self._pipelined_calls = set() # Set of all the pipelined calls.
 
         # Transaction related stuff.
@@ -379,15 +384,26 @@ class RedisProtocol(asyncio.Protocol):
     def connection_made(self, transport):
         self.transport = transport
         self._is_connected = True
-
-        # If a password or database was been given, first connect to that one.
-        if self.password:
-            asyncio.Task(self._auth(self.password))
-
-        if self.db:
-            asyncio.Task(self._select(self.db))
-
         logger.log(logging.INFO, 'Redis connection made')
+
+        @asyncio.coroutine
+        def initialize():
+            # If a password or database was been given, first connect to that one.
+            if self.password:
+                yield from self._auth(self.password)
+
+            if self.db:
+                yield from self._select(self.db)
+
+            #  If we are in pubsub mode, send channel subscriptions again.
+            if self._in_pubsub:
+                if self._pubsub_channels:
+                    yield from self._subscribe(self._subscription, list(self._pubsub_channels)) # TODO: unittest this
+
+                if self._pubsub_patterns:
+                    yield from self._psubscribe(self._subscription, list(self._pubsub_patterns))
+
+        asyncio.Task(initialize())
 
     def data_received(self, data):
         """ Process data received from Redis server.  """
@@ -1301,21 +1317,25 @@ class RedisProtocol(asyncio.Protocol):
     @_command
     def _subscribe(self, channels:ListOf(NativeType)):
         """ Listen for messages published to the given channels """
+        self._pubsub_channels |= set(channels)
         return self._pubsub_method('subscribe', channels)
 
     @_command
     def _unsubscribe(self, channels:ListOf(NativeType)): # TODO: unittest
         """ Stop listening for messages posted to the given channels """
+        self._pubsub_channels -= set(channels)
         return self._pubsub_method('unsubscribe', channels)
 
     @_command
     def _psubscribe(self, patterns:ListOf(NativeType)): # TODO: unittest
         """ Listen for messages published to channels matching the given patterns """
+        self._pubsub_patterns |= set(patterns)
         return self._pubsub_method('psubscribe', patterns)
 
     @_command
     def _punsubscribe(self, patterns:ListOf(NativeType)): # TODO: unittest
         """ Stop listening for messages posted to channels matching the given patterns """
+        self._pubsub_patterns -= set(channels)
         return self._pubsub_method('punsubscribe', patterns)
 
     def _pubsub_method(self, method, params):

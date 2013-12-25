@@ -1,5 +1,6 @@
 from .connection import *
 from .exceptions import *
+from .pool import *
 from .protocol import *
 from .replies import *
 

@@ -29,8 +29,8 @@ Installation
 
     pip install asyncio_redis
 
-Example
--------
+Example using the Protocol class
+--------------------------------
 
 ::
 
@@ -56,10 +56,53 @@ See :ref:`the reference <redis-reference>` to learn more about how to call other
 Redis commands.
 
 
+The connection class
+--------------------
+
+The :class:`asyncio_redis.Connection` class will take care of your connection and
+will automatically reconnect, using a new transport, when the connection
+drops.
+
+.. code:: python
+
+    import asyncio
+    from asyncio_redis import Connection
+
+    @asyncio.coroutine
+    def example():
+        # Create Redis connection
+        connection = yield from Connection.create(port=6379)
+
+        # Set a key
+        yield from connection.set('my_key', 'my_value')
+
+
+Connection pooling
+------------------
+
+Requests will automatically be distributed among all connections in a pool. If
+a connection is blocking because of --for instance-- a blocking rpop, another
+connection will be used for new commands.
+
+
+.. code:: python
+
+    import asyncio
+    from asyncio_redis import Pool
+
+    @asyncio.coroutine
+    def example():
+        # Create Redis connection
+        connection = yield from Pool.create(port=6379, poolsize=10)
+
+        # Set a key
+        yield from connection.set('my_key', 'my_value')
+
+
 Transaction example
 -------------------
 
-::
+.. code:: python
 
     import asyncio
     from asyncio_redis import Connection

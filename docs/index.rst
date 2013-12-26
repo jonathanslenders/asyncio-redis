@@ -29,8 +29,8 @@ Installation
 
     pip install asyncio_redis
 
-Example using the Protocol class
---------------------------------
+Example using the :class:`asyncio_redis.RedisProtocol` class
+------------------------------------------------------------
 
 .. code:: python
 
@@ -59,8 +59,8 @@ See :ref:`the reference <redis-reference>` to learn more about how to call other
 Redis commands.
 
 
-The connection class
---------------------
+The :class:`asyncio_redis.Connection` class
+-------------------------------------------
 
 The :class:`asyncio_redis.Connection` class will take care of your connection and
 will automatically reconnect, using a new transport, when the connection
@@ -83,9 +83,9 @@ drops.
 Connection pooling
 ------------------
 
-Requests will automatically be distributed among all connections in a pool. If
-a connection is blocking because of --for instance-- a blocking rpop, another
-connection will be used for new commands.
+Requests will automatically be distributed among all connections in a
+:class:`asyncio_redis.Pool`. If a connection is blocking because of --for
+instance-- a blocking rpop, another connection will be used for new commands.
 
 
 .. code:: python
@@ -136,6 +136,10 @@ as long as there's a transaction running in there.
 
 Pubsub example
 --------------
+
+By calling :func:`RedisProtocol.start_subscribe` (either on the protocol,
+through the ``Connection`` class or through the ``Pool`` class), you can start
+a pubsub listener.
 
 .. code:: python
 

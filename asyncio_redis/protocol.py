@@ -416,10 +416,10 @@ class RedisProtocol(asyncio.Protocol):
             lines, self._buffer = lines[:-1], lines[-1]
 
             for line in lines:
-                if not self._in_bulk_reply:
-                    self._line_received(line)
-                else:
+                if self._in_bulk_reply:
                     self._handle_bulk_reply_part(line)
+                else:
+                    self._line_received(line)
 
     def encode_from_native(self, data:NativeType) -> bytes:
         """
@@ -628,16 +628,13 @@ class RedisProtocol(asyncio.Protocol):
         # Serialize and write to buffer/transport
         write((u'*%i\r\n' % len(args)).encode('ascii'))
 
-        def send_arg(arg):
-            if isinstance(arg, bytes):
-                write((u'$%i\r\n' % len(arg)).encode('ascii'))
-                write(arg)
+        for a in args:
+            if isinstance(a, bytes):
+                write((u'$%i\r\n' % len(a)).encode('ascii'))
+                write(a)
                 write(b'\r\n')
             else:
-                raise Error('Cannot encode %r' % type(arg))
-
-        for a in args:
-            send_arg(a)
+                raise Error('Cannot encode %r' % type(a))
 
         # Flush the last part
         flush()

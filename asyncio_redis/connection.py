@@ -10,9 +10,18 @@ __all__ = ('Connection', 'BytesConnection')
 
 class Connection:
     """
-    Wrapper around The protocol which takes care of reconnects.
+    Wrapper around the protocol and transport which takes care of establishing
+    the connection and reconnecting it.
+
+    ::
+
+        connection = yield from Connection.create(host='localhost', port=6379)
+        result = yield from connection.set('key', 'value')
     """
     protocol = RedisProtocol
+    """
+    The :class:`RedisProtocol` class to be used this connection.
+    """
 
     @classmethod
     @asyncio.coroutine
@@ -22,7 +31,7 @@ class Connection:
         connection.host = host
         connection.port = port
         connection._loop = loop
-        connection.retry_interval = .5
+        connection._retry_interval = .5
 
         # Create protocol instance
         protocol_factory = type('RedisProtocol', (cls.protocol,), { 'password': password, 'db': db })
@@ -40,17 +49,22 @@ class Connection:
 
         return connection
 
+    @property
+    def transport(self):
+        """ The transport instance that the protocol is currently using. """
+        return self.protocol.transport
+
     def _get_retry_interval(self):
         """ Time to wait for a reconnect in seconds. """
-        return self.retry_interval
+        return self._retry_interval
 
     def _reset_retry_interval(self):
         """ Set the initial retry interval. """
-        self.retry_interval = .5
+        self._retry_interval = .5
 
     def _increase_retry_interval(self):
         """ When a connection failed. Increase the interval."""
-        self.retry_interval = min(60, 1.5 * self.retry_interval)
+        self._retry_interval = min(60, 1.5 * self._retry_interval)
 
     def _reconnect(self):
         """
@@ -69,10 +83,6 @@ class Connection:
                 interval = self._get_retry_interval()
                 logger.log(logging.INFO, 'Connecting to redis failed. Retrying in %i seconds' % interval)
                 yield from asyncio.sleep(interval)
-
-    @property
-    def transport(self):
-        return self.protocol.transport
 
     def __getattr__(self, name): # Don't proxy everything, (no private vars, and use decorator to mark exceptions)
         # Only proxy commands.

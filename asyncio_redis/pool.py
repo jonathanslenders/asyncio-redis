@@ -1,4 +1,5 @@
 import asyncio
+from .protocol import RedisProtocol, RedisBytesProtocol
 from .connection import Connection, BytesConnection
 from .exceptions import NoAvailableConnectionsInPool
 
@@ -8,7 +9,7 @@ __all__ = ('Pool', )
 
 class Pool:
     """
-    Wrapper around the Redis protocol.
+    Pool of connections. Each
     Takes care of setting up the connection and connection pooling.
 
     When poolsize > 1 and some connections are in use because of transactions
@@ -16,14 +17,28 @@ class Pool:
 
     ::
 
-        pool = yield from Pool.create(poolsize=10)
-        connection.set('key', 'value')
+        pool = yield from Pool.create(host='localhost', port=6379, poolsize=10)
+        result = yield from connection.set('key', 'value')
     """
-    connection_class = Connection
+
+    protocol = RedisProtocol
+    """
+    The :class:`RedisProtocol` class to be used for each connection in this pool.
+    """
+
+    @classmethod
+    def get_connection_class(cls):
+        """
+        Return the :class:`Connection` class to be used for every connection in
+        this pool. Normally this is just a ``Connection`` using the defined ``protocol``.
+        """
+        class ConnectionClass(Connection):
+            protocol = cls.protocol
+        return ConnectionClass
 
     @classmethod
     @asyncio.coroutine
-    def create(cls, host='localhost', port=6379, loop=None, password=None, db=0, auto_reconnect=True, poolsize=1):
+    def create(cls, host='localhost', port=6379, loop=None, password=None, db=0, poolsize=1, auto_reconnect=True):
         """
         Create a new connection instance.
         """
@@ -36,7 +51,8 @@ class Pool:
         self._connections = []
 
         for i in range(poolsize):
-            connection = yield from cls.connection_class.create(host=host, port=port, loop=loop,
+            connection_class = cls.get_connection_class()
+            connection = yield from connection_class.create(host=host, port=port, loop=loop,
                             password=password, db=db, auto_reconnect=auto_reconnect)
             self._connections.append(connection)
 
@@ -82,7 +98,7 @@ class Pool:
         """
         self._connections = self._connections[1:] + self._connections[:1]
 
-    def __getattr__(self, name): # Don't proxy everything, (no private vars, and use decorator to mark exceptions)
+    def __getattr__(self, name):
         """
         Proxy to a protocol. (This will choose a protocol instance that's not
         busy in a blocking request or transaction.)
@@ -94,4 +110,11 @@ class Pool:
         else:
             raise NoAvailableConnectionsInPool('No available connections in the pool: size=%s, in_use=%s, connected=%s' % (
                                 self.poolsize, self.connections_in_use, self.connections_connected))
+
+
+class BytesPool:
+    """
+    Connection pool which uses :class:`RedisBytesProtocol`.
+    """
+    protocol = RedisBytesProtocol
 

@@ -137,9 +137,9 @@ as long as there's a transaction running in there.
 Pubsub example
 --------------
 
-By calling :func:`RedisProtocol.start_subscribe` (either on the protocol,
-through the ``Connection`` class or through the ``Pool`` class), you can start
-a pubsub listener.
+By calling :func:`asyncio_redis.RedisProtocol.start_subscribe` (either on the
+protocol, through the ``Connection`` class or through the ``Pool`` class), you
+can start a pubsub listener.
 
 .. code:: python
 

@@ -408,13 +408,15 @@ class RedisProtocol(asyncio.Protocol):
         """ Process data received from Redis server.  """
         self._buffer += data
 
-        while b'\r\n' in self._buffer:
-            line, self._buffer = self._buffer.split(b'\r\n', 1)
+        if b'\r\n' in self._buffer:
+            lines = self._buffer.split(b'\r\n')
+            lines, self._buffer = lines[:-1], lines[-1]
 
-            if not self._in_bulk_reply:
-                self._line_received(line)
-            else:
-                self._handle_bulk_reply_part(line)
+            for line in lines:
+                if not self._in_bulk_reply:
+                    self._line_received(line)
+                else:
+                    self._handle_bulk_reply_part(line)
 
     def encode_from_native(self, data:NativeType) -> bytes:
         """
@@ -599,35 +601,52 @@ class RedisProtocol(asyncio.Protocol):
     def _send_command(self, *args):
         """
         Send Redis request command.
+        `args` should be a list of bytes to be written to the transport.
         """
-        # Create write buffer
+        # Create write buffer that flushes when the size exceeds the
+        # IP packet size. (allocating bigger strings for the concateration
+        # doesn't make any sense and is slow.)
         data = []
-        write = data.append
+        size = 0
+        def flush():
+            nonlocal data, size
+            self.transport.write(b''.join(data))
+            data = []
+            size = 0
 
-        # Serialize
+        def write(d):
+            nonlocal size
+            data.append(d)
+            size += len(d)
+
+            if size > 65000: # Ip packet size = 65,535
+                flush()
+
+        # Serialize and write to buffer/transport
         write((u'*%i\r\n' % len(args)).encode('ascii'))
 
-        for a in args:
-            if isinstance(a, bytes):
-                write((u'$%i\r\n' % len(a)).encode('ascii'))
-                write(a)
+        def send_arg(arg):
+            if isinstance(arg, bytes):
+                write((u'$%i\r\n' % len(arg)).encode('ascii'))
+                write(arg)
                 write(b'\r\n')
             else:
-                raise Error('Cannot encode %r' % type(a))
+                raise Error('Cannot encode %r' % type(arg))
 
-        # Write to transport in one call.
-        self.transport.write(b''.join(data))
+        for a in args:
+            send_arg(a)
+
+        # Flush the last part
+        flush()
 
     @asyncio.coroutine
-    def _get_answer(self, _bypass=False, post_process_func=None, call=None):
+    def _get_answer(self, answer_f, _bypass=False, post_process_func=None, call=None):
         """
         Return an answer to the pipelined query.
         (Or when we are in a transaction, return a future for the answer.)
         """
-        # Add a new future to our queue.
-        f = Future()
-        self._queue.append(f)
-        result = yield from f
+        # Wait for the answer to come in
+        result = yield from answer_f
 
         if self._in_transaction and not _bypass:
             # When the connection is inside a transaction, the query will be queued.
@@ -662,11 +681,15 @@ class RedisProtocol(asyncio.Protocol):
         call = PipelinedCall(args[0], set_blocking)
         self._pipelined_calls.add(call)
 
+        # Add a new future to our answer queue.
+        answer_f = Future()
+        self._queue.append(answer_f)
+
         # Send command
         self._send_command(*args)
 
         # Receive answer.
-        result = yield from self._get_answer(_bypass=_bypass, post_process_func=post_process_func, call=call)
+        result = yield from self._get_answer(answer_f, _bypass=_bypass, post_process_func=post_process_func, call=call)
         return result
 
     # Internal

@@ -51,7 +51,7 @@ class ZScoreBoundary:
 ZScoreBoundary.MIN_VALUE = ZScoreBoundary('-inf')
 ZScoreBoundary.MAX_VALUE = ZScoreBoundary('+inf')
 
-class ZAggregate:
+class ZAggregate: # TODO: use the Python 3.4 enum type.
     """
     Aggregation method for zinterstore and zunionstore.
     """
@@ -569,7 +569,7 @@ class RedisProtocol(asyncio.Protocol):
             self._push_answer(reply)
 
         # Create futures to be inserted before other replies.
-        futures = [ Future() for f in range(count) ]
+        futures = [ Future() for f in range(count) ] # TODO: the allocation of these futures is very slow... if we talk about millions.
         for f in futures[::-1]:
             self._queue.appendleft(f)
 
@@ -1457,7 +1457,7 @@ class RedisProtocol(asyncio.Protocol):
         # The register_script APi was made compatible with the redis.py library:
         # https://github.com/andymccurdy/redis-py
         sha = yield from self.script_load(script)
-        return Script(lambda:self, sha)
+        return Script(lambda:self, sha) # TODO: calling this script should be possible any connection of the pool.
 
     @_command
     def script_exists(self, shas:ListOf(str)) -> ListOf(bool):

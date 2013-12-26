@@ -2,6 +2,7 @@
 import asyncio
 import signal
 import logging
+import types
 
 from asyncio.futures import Future
 from asyncio.queues import Queue
@@ -211,7 +212,7 @@ def _command(method):
         if type_ == NativeType:
             return protocol.native_type
         elif isinstance(type_, ListOf):
-            return list # We don't check the content of the list.
+            return (list, types.GeneratorType) # We don't check the content of the list.
         else:
             return type_
 

@@ -224,14 +224,14 @@ def _command(method):
                 if name in params:
                     real_type = get_real_type(protocol, params[name])
                     if not isinstance(value, real_type):
-                        raise TypeError('%s received %r, expected %r' %
+                        raise TypeError('RedisProtocol.%s received %r, expected %r' %
                                         (method.__name__, type(value).__name__, real_type))
 
     def typecheck_return(protocol, result):
         if return_type:
             expected_type = get_real_type(protocol, return_type)
             if not isinstance(result, expected_type):
-                raise TypeError('Got unexpected return type %r in %s, expected %r' %
+                raise TypeError('Got unexpected return type %r in RedisProtocol.%s, expected %r' %
                                 (type(result).__name__, method.__name__, expected_type))
 
     # Wrap it into a check which allows this command to be run either directly

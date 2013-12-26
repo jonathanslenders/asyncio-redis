@@ -1643,8 +1643,8 @@ class RedisBytesProtocol(RedisProtocol):
 
 class Script:
     """ Lua script. """
-    def __init__(self, get_protocol, sha):
-        self.get_protocol = get_protocol
+    def __init__(self, get_protocol_func, sha):
+        self.get_protocol = get_protocol_func
         self.sha = sha
 
     def __call__(self, keys=[], args=[], protocol=None):

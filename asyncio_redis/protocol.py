@@ -354,9 +354,8 @@ class RedisProtocol(asyncio.Protocol):
     Database to connect using "SELECT" when a connection has been established.
     """
 
-    def __init__(self, reconnect_handle=None):
+    def __init__(self):
         self.transport = None
-        self.reconnect_handle = reconnect_handle
         self._queue = deque() # Input parser queues
         self._messages_queue = None # Pubsub queue
         self._is_connected = False # True as long as the underlying transport is connected.
@@ -484,10 +483,6 @@ class RedisProtocol(asyncio.Protocol):
             f.set_exception(ConnectionLost(exc))
 
         logger.log(logging.INFO, 'Redis connection lost')
-
-        # Trigger reconnect.
-        if self.reconnect_handle:
-            self.reconnect_handle()
 
     # Request state
 

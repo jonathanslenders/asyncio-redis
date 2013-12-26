@@ -17,25 +17,28 @@ class Connection:
     @classmethod
     @asyncio.coroutine
     def create(cls, host='localhost', port=6379, loop=None, password=None, db=0, auto_reconnect=True):
-        self = cls()
+        connection = cls()
 
-        self.host = host
-        self.port = port
-        self._loop = loop
-        self.retry_interval = .5
+        connection.host = host
+        connection.port = port
+        connection._loop = loop
+        connection.retry_interval = .5
 
         # Create protocol instance
         protocol_factory = type('RedisProtocol', (cls.protocol,), { 'password': password, 'db': db })
 
         if auto_reconnect:
-            self.protocol = protocol_factory(lambda: asyncio.Task(self._reconnect()))
-        else:
-            self.protocol = protocol_factory()
+            class protocol_factory(protocol_factory):
+                def connection_lost(self, exc):
+                    super().connection_lost(exc)
+                    asyncio.Task(connection._reconnect())
+
+        connection.protocol = protocol_factory()
 
         # Connect
-        yield from self._reconnect()
+        yield from connection._reconnect()
 
-        return self
+        return connection
 
     def _get_retry_interval(self):
         """ Time to wait for a reconnect in seconds. """

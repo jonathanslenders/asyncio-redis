@@ -35,7 +35,9 @@ class ZScoreBoundary:
     for queries like zrangebyscore and similar
 
     :param value: Value for the boundary.
-    :param type: float
+    :type value: float
+    :param exclude_boundary: Exclude the boundary.
+    :type exclude_boundary: bool
     """
     def __init__(self, value, exclude_boundary=False):
         assert isinstance(value, float) or value in ('+inf', '-inf')

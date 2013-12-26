@@ -600,15 +600,23 @@ class RedisProtocol(asyncio.Protocol):
         """
         Send Redis request command.
         """
-        self.transport.write((u'*%i\r\n' % len(args)).encode('ascii'))
+        # Create write buffer
+        data = []
+        write = data.append
+
+        # Serialize
+        write((u'*%i\r\n' % len(args)).encode('ascii'))
 
         for a in args:
             if isinstance(a, bytes):
-                self.transport.write((u'$%i\r\n' % len(a)).encode('ascii'))
-                self.transport.write(a)
-                self.transport.write(b'\r\n')
+                write((u'$%i\r\n' % len(a)).encode('ascii'))
+                write(a)
+                write(b'\r\n')
             else:
                 raise Error('Cannot encode %r' % type(a))
+
+        # Write to transport in one call.
+        self.transport.write(b''.join(data))
 
     @asyncio.coroutine
     def _get_answer(self, _bypass=False, post_process_func=None, call=None):

@@ -97,6 +97,6 @@ class Connection:
 
 class BytesConnection(Connection):
     """
-    Connection that uses :class:`RedisBytesProtocol`
+    Identical to :class:`Connection`, but uses :class:`RedisBytesProtocol` instead.
     """
     protocol = RedisBytesProtocol

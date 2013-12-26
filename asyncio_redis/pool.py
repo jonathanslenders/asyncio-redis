@@ -4,7 +4,7 @@ from .connection import Connection, BytesConnection
 from .exceptions import NoAvailableConnectionsInPool
 
 
-__all__ = ('Pool', )
+__all__ = ('Pool', 'BytesPool', )
 
 
 class Pool:
@@ -114,7 +114,7 @@ class Pool:
 
 class BytesPool:
     """
-    Connection pool which uses :class:`RedisBytesProtocol`.
+    Identical to :class:`Pool`, but uses :class:`RedisBytesProtocol` instead.
     """
     protocol = RedisBytesProtocol
 

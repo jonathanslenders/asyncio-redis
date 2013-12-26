@@ -21,8 +21,12 @@ connection pooling.
 .. autoclass:: asyncio_redis.Connection
     :members:
 
+.. autoclass:: asyncio_redis.BytesConnection
+
 .. autoclass:: asyncio_redis.Pool
     :members:
+
+.. autoclass:: asyncio_redis.BytesPool
 
 .. autoclass:: asyncio_redis.ZScoreBoundary
     :members:

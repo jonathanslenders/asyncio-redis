@@ -144,7 +144,7 @@ Pubsub example
 
     @asyncio.coroutine
     def example():
-        # Create connection (you can also use Connection.create)
+        # Create connection
         connection = yield from asyncio_redis.Connection.create(host='localhost', port=6379)
 
         # Create subscriber.

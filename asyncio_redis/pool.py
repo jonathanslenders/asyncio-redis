@@ -1,7 +1,8 @@
-import asyncio
-from .protocol import RedisProtocol, RedisBytesProtocol
 from .connection import Connection, BytesConnection
 from .exceptions import NoAvailableConnectionsInPool
+from .protocol import RedisProtocol, RedisBytesProtocol, Script
+from functools import wraps
+import asyncio
 
 
 __all__ = ('Pool', 'BytesPool', )
@@ -110,6 +111,19 @@ class Pool:
         else:
             raise NoAvailableConnectionsInPool('No available connections in the pool: size=%s, in_use=%s, connected=%s' % (
                                 self.poolsize, self.connections_in_use, self.connections_connected))
+
+
+    # Proxy the register_script method, so that the returned object will
+    # execute on any available connection in the pool.
+    @asyncio.coroutine
+    @wraps(RedisProtocol.register_script)
+    def register_script(self, script:str) -> Script:
+        # Call register_script from the Protocol.
+        script = yield from self.__getattr__('register_script')(script)
+        assert isinstance(script, Script)
+
+        # Return a new script instead that runs it on any connection of the pool.
+        return Script(script.sha, script.code, lambda: self.evalsha)
 
 
 class BytesPool:

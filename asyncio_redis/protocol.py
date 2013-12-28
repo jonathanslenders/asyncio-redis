@@ -1447,14 +1447,14 @@ class RedisProtocol(asyncio.Protocol):
         ::
 
             script = yield from protocol.register_script(lua_code)
-            result = yield from script(keys=[...], args=[...])
+            result = yield from script.run(keys=[...], args=[...])
 
         :returns: :class:`asyncio_redis.Script`
         """
         # The register_script APi was made compatible with the redis.py library:
         # https://github.com/andymccurdy/redis-py
         sha = yield from self.script_load(script)
-        return Script(lambda:self, sha) # TODO: calling this script should be possible any connection of the pool.
+        return Script(sha, script, lambda:self.evalsha)
 
     @_command
     def script_exists(self, shas:ListOf(str)) -> ListOf(bool):
@@ -1640,13 +1640,20 @@ class RedisBytesProtocol(RedisProtocol):
 
 class Script:
     """ Lua script. """
-    def __init__(self, get_protocol_func, sha):
-        self.get_protocol = get_protocol_func
+    def __init__(self, sha, code, get_evalsha_func):
         self.sha = sha
+        self.code = code
+        self.get_evalsha_func = get_evalsha_func
 
-    def __call__(self, keys=[], args=[], protocol=None):
-        """ Execute the script """
-        return (protocol or self.get_protocol()).evalsha(self.sha, keys, args)
+    def run(self, keys=[], args=[]):
+        """
+        Returns a coroutine that executes the script.
+
+        ::
+
+            yield from script.run(keys=[], args=[])
+        """
+        return self.get_evalsha_func()(self.sha, keys, args)
 
 
 class Transaction:
@@ -1725,7 +1732,8 @@ class Subscription:
 
     def get_next_published(self):
         """
-        Wait for next pubsub message to be received and return it.
+        Coroutine which waits for next pubsub message to be received and
+        returns it.
 
         :returns: instance of :class:`PubSubReply`
         """

@@ -1076,7 +1076,7 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertIsInstance(script, Script)
 
         # Call script.
-        result = yield from script(keys=['foo'], args=['5'])
+        result = yield from script.run(keys=['foo'], args=['5'])
         self.assertEqual(result, 10)
 
         # Test evalsha directly
@@ -1107,7 +1107,7 @@ class RedisProtocolTest(unittest.TestCase):
             script = yield from protocol.register_script(code)
 
             # Call script.
-            result = yield from script()
+            result = yield from script.run()
             self.assertEqual(result, return_value)
 
     @redis_test
@@ -1129,7 +1129,7 @@ class RedisProtocolTest(unittest.TestCase):
             transport, protocol = yield from self.loop.create_connection(RedisProtocol, 'localhost', PORT)
             script = yield from protocol.register_script(code)
             with self.assertRaises(ScriptKilledError):
-                yield from script()
+                yield from script.run()
 
         # (start script)
         asyncio.Task(run_while_true())
@@ -1398,6 +1398,22 @@ class RedisPoolTest(unittest.TestCase):
                 yield from connection.delete([ 'my-list-one-more' ])
                 yield from connection.blpop(['my-list-one-more'])
             self.assertIn('No available connections in the pool', e.exception.args[0])
+
+        self.loop.run_until_complete(test())
+
+    def test_lua_script_in_pool(self):
+        @asyncio.coroutine
+        def test():
+            # Create connection
+            connection = yield from Pool.create(port=PORT, poolsize=3)
+
+            # Register script
+            script = yield from connection.register_script("return 100")
+            self.assertIsInstance(script, Script)
+
+            # Run script
+            result = yield from script.run()
+            self.assertEqual(result, 100)
 
         self.loop.run_until_complete(test())
 

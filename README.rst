@@ -158,5 +158,36 @@ Pubsub example
             reply = yield from subscriber.get_next_published()
             print('Received: ', repr(reply.value), 'on channel', reply.channel)
 
+
+LUA Scripting example
+---------------------
+
+.. code:: python
+
+    import asyncio
+    import asyncio_redis
+
+    code = \
+    """
+    local value = redis.call('GET', KEYS[1])
+    value = tonumber(value)
+    return value * ARGV[1]
+    """
+
+    @asyncio.coroutine
+    def example():
+        connection = yield from asyncio_redis.Connection.create(host='localhost', port=6379)
+
+        # Set a key
+        yield from connection.set('my_key', '2')
+        
+        # Register script
+        multiply = yield from connection.register_script(code)
+        
+        # Run script
+        result = yield from multiply.run(keys=['my_key'], args=['5'])
+        print(result) # prints 2 * 5
+
+
 .. |Build Status| image:: https://travis-ci.org/jonathanslenders/asyncio-redis.png
     :target: https://travis-ci.org/jonathanslenders/asyncio-redis#

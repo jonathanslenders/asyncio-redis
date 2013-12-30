@@ -1,5 +1,5 @@
 from .connection import Connection, BytesConnection
-from .exceptions import NoAvailableConnectionsInPool
+from .exceptions import NoAvailableConnectionsInPoolError
 from .protocol import RedisProtocol, RedisBytesProtocol, Script
 from functools import wraps
 import asyncio
@@ -109,7 +109,7 @@ class Pool:
         if connection:
             return getattr(connection, name)
         else:
-            raise NoAvailableConnectionsInPool('No available connections in the pool: size=%s, in_use=%s, connected=%s' % (
+            raise NoAvailableConnectionsInPoolError('No available connections in the pool: size=%s, in_use=%s, connected=%s' % (
                                 self.poolsize, self.connections_in_use, self.connections_connected))
 
 

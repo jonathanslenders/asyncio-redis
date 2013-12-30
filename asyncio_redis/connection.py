@@ -1,4 +1,3 @@
-from .exceptions import NoAvailableConnectionsInPool
 from .protocol import RedisProtocol, RedisBytesProtocol, _all_commands
 from asyncio.log import logger
 import asyncio

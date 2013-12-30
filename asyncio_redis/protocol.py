@@ -12,7 +12,7 @@ from collections import deque
 from functools import wraps
 from inspect import getfullargspec, formatargspec, getcallargs
 
-from .exceptions import Error, ErrorReply, TransactionError, NotConnected, ConnectionLost, NoRunningScriptError, ScriptKilledError
+from .exceptions import Error, ErrorReply, TransactionError, NotConnectedError, ConnectionLostError, NoRunningScriptError, ScriptKilledError
 from .replies import *
 
 __all__ = (
@@ -239,7 +239,7 @@ def _command(method):
     @wraps(method)
     def wrapper(self, *a, **kw):
         if not self._is_connected:
-            raise NotConnected
+            raise NotConnectedError
 
         # When calling from a transaction, the first arg is the transaction object.
         if self.in_transaction and (len(a) == 0 or a[0] != self._transaction):
@@ -485,7 +485,7 @@ class RedisProtocol(asyncio.Protocol):
         # Raise exception on all waiting futures.
         while self._queue:
             f = self._queue.popleft()
-            f.set_exception(ConnectionLost(exc))
+            f.set_exception(ConnectionLostError(exc))
 
         logger.log(logging.INFO, 'Redis connection lost')
 

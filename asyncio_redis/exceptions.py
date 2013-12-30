@@ -1,10 +1,10 @@
 __all__ = (
-        'ConnectionLost',
+        'ConnectionLostError',
         'Error',
         'ErrorReply',
-        'NoAvailableConnectionsInPool',
+        'NoAvailableConnectionsInPoolError',
         'NoRunningScriptError',
-        'NotConnected',
+        'NotConnectedError',
         'ScriptKilledError',
         'TransactionError',
 )
@@ -26,22 +26,22 @@ class TransactionError(Error):
     """ Transaction failed. """
 
 
-class NotConnected(Error):
+class NotConnectedError(Error):
     """ Protocol is not connected. """
     def __init__(self, message='Not connected'):
         super().__init__(message)
 
 
-class ConnectionLost(NotConnected):
+class ConnectionLostError(NotConnectedError):
     """
     Connection lost during query.
-    (Special case of NotConnected.)
+    (Special case of ``NotConnectedError``.)
     """
     def __init__(self, exc):
         pass
 
 
-class NoAvailableConnectionsInPool(NotConnected):
+class NoAvailableConnectionsInPoolError(NotConnectedError):
     """
     When the connection pool has no available connections.
     """

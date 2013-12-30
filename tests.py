@@ -12,9 +12,9 @@ from asyncio_redis import (
         Error,
         ErrorReply,
         ListReply,
-        NoAvailableConnectionsInPool,
+        NoAvailableConnectionsInPoolError,
         NoRunningScriptError,
-        NotConnected,
+        NotConnectedError,
         Pool,
         PubSubReply,
         RedisBytesProtocol,
@@ -1303,7 +1303,7 @@ class RedisPoolTest(unittest.TestCase):
             yield from asyncio.sleep(.1) # Sleep to make sure that the above coroutine started executing.
 
             # Run command in other thread.
-            with self.assertRaises(NoAvailableConnectionsInPool) as e:
+            with self.assertRaises(NoAvailableConnectionsInPoolError) as e:
                 yield from connection.set('key', 'value')
             self.assertIn('No available connections in the pool', e.exception.args[0])
 
@@ -1394,7 +1394,7 @@ class RedisPoolTest(unittest.TestCase):
                 yield from asyncio.sleep(.1) # Sleep to make sure that the above coroutine started executing.
 
             # One more blocking call should fail.
-            with self.assertRaises(NoAvailableConnectionsInPool) as e:
+            with self.assertRaises(NoAvailableConnectionsInPoolError) as e:
                 yield from connection.delete([ 'my-list-one-more' ])
                 yield from connection.blpop(['my-list-one-more'])
             self.assertIn('No available connections in the pool', e.exception.args[0])
@@ -1431,7 +1431,7 @@ class RedisPoolTest(unittest.TestCase):
             t3 = yield from connection.multi()
 
             # Fourth transaction should fail. (Pool is full)
-            with self.assertRaises(NoAvailableConnectionsInPool) as e:
+            with self.assertRaises(NoAvailableConnectionsInPoolError) as e:
                 yield from connection.multi()
             self.assertIn('No available connections in the pool', e.exception.args[0])
 
@@ -1524,8 +1524,8 @@ class RedisPoolTest(unittest.TestCase):
     def test_connection_lost(self):
         """
         When the transport is closed, any further commands should raise
-        NotConnected. (Unless the transport would be auto-reconnecting and have
-        established a new connection.)
+        NotConnectedError. (Unless the transport would be auto-reconnecting and
+        have established a new connection.)
         """
         @asyncio.coroutine
         def test():
@@ -1540,7 +1540,7 @@ class RedisPoolTest(unittest.TestCase):
             self.assertEqual(protocol.is_connected, False)
 
             # Test get/set
-            with self.assertRaises(NotConnected) as e:
+            with self.assertRaises(NotConnectedError) as e:
                 yield from protocol.set('key', 'value')
 
         self.loop.run_until_complete(test())
@@ -1558,7 +1558,7 @@ class RedisPoolTest(unittest.TestCase):
             yield from asyncio.sleep(.5)
 
             # Test get/set
-            with self.assertRaises(NoAvailableConnectionsInPool) as e:
+            with self.assertRaises(NoAvailableConnectionsInPoolError) as e:
                 yield from connection.set('key', 'value')
             self.assertIn('No available connections in the pool: size=1, in_use=0, connected=0', e.exception.args[0])
 

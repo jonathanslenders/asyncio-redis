@@ -53,7 +53,7 @@ Example using the :class:`asyncio_redis.RedisProtocol` class
         print(result)
 
     if __name__ == '__main__':
-        asyncio.get_event_loop().run_until_complete(run())
+        asyncio.get_event_loop().run_until_complete(example())
 
 See :ref:`the reference <redis-reference>` to learn more about how to call other
 Redis commands.

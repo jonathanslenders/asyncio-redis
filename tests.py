@@ -1243,6 +1243,21 @@ class RedisBytesProtocolTest(unittest.TestCase):
         self.assertEqual(result, b'value')
 
 
+class NoTypeCheckingTest(unittest.TestCase):
+    def test_protocol(self):
+        # Override protocol, disabling type checking.
+        class NoTypeCheckingProtocol(RedisProtocol):
+            enable_typechecking = False
+
+        self.loop = asyncio.get_event_loop()
+        transport, protocol = yield from loop.create_connection(
+                    NoTypeCheckingProtocol, 'localhost', PORT)
+
+        # Setting values should still work.
+        result = yield from protocol.set(b'key', b'value')
+        self.assertEqual(result, StatusReply('OK'))
+
+
 class RedisConnectionTest(unittest.TestCase):
     """ Test connection class. """
     def setUp(self):

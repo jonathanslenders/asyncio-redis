@@ -219,7 +219,7 @@ def _command(method):
             return type_
 
     def typecheck_input(protocol, *a, **kw):
-        if params:
+        if protocol.enable_typechecking and params:
             for name, value in getcallargs(method, None, *a, **kw).items():
                 if name in params:
                     real_type = get_real_type(protocol, params[name])
@@ -228,7 +228,7 @@ def _command(method):
                                         (method.__name__, type(value).__name__, real_type))
 
     def typecheck_return(protocol, result):
-        if return_type:
+        if protocol.enable_typechecking and return_type:
             expected_type = get_real_type(protocol, return_type)
             if not isinstance(result, expected_type):
                 raise TypeError('Got unexpected return type %r in RedisProtocol.%s, expected %r' %
@@ -355,6 +355,12 @@ class RedisProtocol(asyncio.Protocol):
     db = 0
     """
     Database to connect using "SELECT" when a connection has been established.
+    """
+
+    enable_typechecking = True
+    """
+    When ``True``, check argument types for all redis commands. Normally you
+    want to have this enabled.
     """
 
     def __init__(self):

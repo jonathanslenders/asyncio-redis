@@ -383,6 +383,14 @@ class RedisProtocol(asyncio.Protocol):
         self._transaction = None
         self._transaction_response_queue = None # Transaction answer queue
 
+        self._line_received_handlers = {
+            b'+': self._handle_status_reply,
+            b'-': self._handle_error_reply,
+            b'$': self._handle_bulk_reply,
+            b'*': self._handle_multi_bulk_reply,
+            b':': self._handle_int_reply,
+        }
+
     def connection_made(self, transport):
         self.transport = transport
         self._is_connected = True
@@ -411,15 +419,19 @@ class RedisProtocol(asyncio.Protocol):
         """ Process data received from Redis server.  """
         self._buffer += data
 
-        if b'\r\n' in self._buffer:
-            lines = self._buffer.split(b'\r\n')
-            lines, self._buffer = lines[:-1], lines[-1]
+        # When \r\n appears at least once in the current buffer, parse all the
+        # lines that are terminated with \r\n. The remaining part is put back
+        # in the buffer.
+        lines = self._buffer.split(b'\r\n')
+        self._buffer = lines.pop()
 
-            for line in lines:
-                if self._in_bulk_reply:
-                    self._handle_bulk_reply_part(line)
-                else:
-                    self._line_received(line)
+        for line in lines:
+            if self._in_bulk_reply:
+                self._handle_bulk_reply_part(line)
+            else:
+                # Handle line
+                first_byte, line = line[:1], line[1:]
+                self._line_received_handlers[first_byte](line)
 
     def encode_from_native(self, data:NativeType) -> bytes:
         """
@@ -453,27 +465,6 @@ class RedisProtocol(asyncio.Protocol):
             return str("(%f" % value.value).encode('ascii')
         else:
             return str("%f" % value.value).encode('ascii')
-
-    def _line_received(self, line):
-        first_byte, line = line[:1], line[1:]
-
-        if first_byte == b'+':
-            self._handle_status_reply(line)
-
-        elif first_byte == b'-':
-            self._handle_error_reply(line)
-
-        elif first_byte == b'$':
-            self._handle_bulk_reply(line)
-
-        elif first_byte == b'*':
-            self._handle_multi_bulk_reply(line)
-
-        elif first_byte == b':':
-            self._handle_int_reply(line)
-
-        else:
-            print ('err...', line)
 
     def eof_received(self):
         logger.log(logging.INFO, 'EOF received in RedisProtocol')

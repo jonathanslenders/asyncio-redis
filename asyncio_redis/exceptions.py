@@ -38,7 +38,7 @@ class ConnectionLostError(NotConnectedError):
     (Special case of ``NotConnectedError``.)
     """
     def __init__(self, exc):
-        pass
+        self.exception = exc
 
 
 class NoAvailableConnectionsInPoolError(NotConnectedError):

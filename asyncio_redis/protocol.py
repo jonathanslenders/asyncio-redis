@@ -592,43 +592,30 @@ class RedisProtocol(asyncio.Protocol):
 
     # Redis operations.
 
-    def _send_command(self, *args):
+    def _send_command(self, args):
         """
         Send Redis request command.
         `args` should be a list of bytes to be written to the transport.
         """
-        # Create write buffer that flushes when the size exceeds the
-        # IP packet size. (allocating bigger strings for the concateration
-        # doesn't make any sense and is slow.)
+        # Create write buffer.
         data = []
-        size = 0
-        def flush():
-            nonlocal data, size
-            self.transport.write(b''.join(data))
-            data = []
-            size = 0
 
-        def write(d):
-            nonlocal size
-            data.append(d)
-            size += len(d)
+        # NOTE: First, I tried to optimize by also flushing this buffer in
+        # between the looping through the args. However, I removed that as the
+        # advantage was really small. Even when some commands like `hmset`
+        # could accept a generator instead of a list/dict, we would need to
+        # read out the whole generator in memory in order to write the number
+        # of arguments first.
 
-            if size > 65000: # Ip packet size = 65,535
-                flush()
+        # Serialize and write header (number of arguments.)
+        data.append((u'*%i\r\n' % len(args)).encode('ascii'))
 
-        # Serialize and write to buffer/transport
-        write((u'*%i\r\n' % len(args)).encode('ascii'))
-
-        for a in args:
-            if isinstance(a, bytes):
-                write((u'$%i\r\n' % len(a)).encode('ascii'))
-                write(a)
-                write(b'\r\n')
-            else:
-                raise Error('Cannot encode %r' % type(a))
+        # Write arguments.
+        for arg in args:
+            data += [ (u'$%i\r\n' % len(arg)).encode('ascii'), arg, b'\r\n' ]
 
         # Flush the last part
-        flush()
+        self.transport.write(b''.join(data))
 
     @asyncio.coroutine
     def _get_answer(self, answer_f, _bypass=False, post_process_func=None, call=None):
@@ -677,7 +664,7 @@ class RedisProtocol(asyncio.Protocol):
         self._queue.append(answer_f)
 
         # Send command
-        self._send_command(*args)
+        self._send_command(args)
 
         # Receive answer.
         result = yield from self._get_answer(answer_f, _bypass=_bypass, post_process_func=post_process_func, call=call)

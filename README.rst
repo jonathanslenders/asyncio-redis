@@ -1,7 +1,7 @@
 Redis client for PEP3156 asyncio (tulip)
 ========================================
 
-|Build Status|
+|Build Status| |Build Status2| 
 
 Features
 --------
@@ -191,3 +191,6 @@ LUA Scripting example
 
 .. |Build Status| image:: https://travis-ci.org/jonathanslenders/asyncio-redis.png
     :target: https://travis-ci.org/jonathanslenders/asyncio-redis#
+
+.. |Build Status2| image:: https://drone.io/github.com/jonathanslenders/asyncio-redis/status.png
+    :target: https://drone.io/github.com/jonathanslenders/asyncio-redis/latest

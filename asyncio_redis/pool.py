@@ -128,7 +128,7 @@ class Pool:
 
 class BytesPool:
     """
-    Identical to :class:`Pool`, but uses :class:`RedisBytesProtocol` instead.
+    Identical to :class:`.Pool`, but uses :class:`.RedisBytesProtocol` instead.
     """
     protocol = RedisBytesProtocol
 

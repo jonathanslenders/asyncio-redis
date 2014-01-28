@@ -282,18 +282,16 @@ def _command(method):
         """ Turn type annotation into doc string. """
         try:
             return {
-                BlockingPopReply: ":class:`asyncio_redis.BlockingPopReply`",
-                DictReply: ":class:`asyncio_redis.DictReply`",
-                ListReply: ":class:`asyncio_redis.ListReply`",
-                MultiBulkReply: ":class:`asyncio_redis.MultiBulkReply`",
-                NativeType: "Native Python type, as defined by ``RedisProtocol.native_type``",
+                BlockingPopReply: ":class:`BlockingPopReply <asyncio_redis.BlockingPopReply>`",
+                DictReply: ":class:`DictReply <asyncio_redis.DictReply>`",
+                ListReply: ":class:`ListReply <asyncio_redis.ListReply>`",
+                MultiBulkReply: ":class:`MultiBulkReply <asyncio_redis.MultiBulkReply>`",
+                NativeType: "Native Python type, as defined by :attr:`native_type <asyncio_redis.RedisProtocol.native_type>`",
                 NoneType: "None",
-                SetReply: ":class:`asyncio_redis.SetReply`",
-                StatusReply: ":class:`asyncio_redis.StatusReply`",
-                ZRangeReply: ":class:`asyncio_redis.ZRangeReply`",
-                ZRangeReply: ":class:`asyncio_redis.ZRangeReply`",
-                ZRangeReply: ":class:`asyncio_redis.ZRangeReply`",
-                ZScoreBoundary: ":class:`asyncio_redis.ZScoreBoundary`",
+                SetReply: ":class:`SetReply <asyncio_redis.SetReply>`",
+                StatusReply: ":class:`StatusReply <asyncio_redis.StatusReply>`",
+                ZRangeReply: ":class:`ZRangeReply <asyncio_redis.ZRangeReply>`",
+                ZScoreBoundary: ":class:`ZScoreBoundary <asyncio_redis.ZScoreBoundary>`",
                 int: 'int',
                 bool: 'bool',
                 dict: 'dict',
@@ -1642,7 +1640,7 @@ class Script:
 
 class Transaction:
     """
-    Transaction context. This is a proxy to a :class:`RedisProtocol` instance.
+    Transaction context. This is a proxy to a :class:`.RedisProtocol` instance.
     Every redis command called on this object will run inside the transaction.
     The transaction can be finished by calling either ``discard`` or ``exec``.
 
@@ -1679,7 +1677,7 @@ class Transaction:
 
     def exec(self):
         """
-        Execute transaction. Returns a list of futures.
+        Execute transaction.
         """
         return self._protocol._exec()
 
@@ -1719,6 +1717,6 @@ class Subscription:
         Coroutine which waits for next pubsub message to be received and
         returns it.
 
-        :returns: instance of :class:`PubSubReply`
+        :returns: instance of :class:`PubSubReply <asyncio_redis.PubSubReply>`
         """
         return self._messages_queue.get()

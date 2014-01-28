@@ -3,14 +3,13 @@
 Reference
 =========
 
-You can either use the :class:`RedisProtocol` class directly, use the
-:class:`Connection` class, or use the :class:`Pool` wrapper which also offers
+You can either use the :class:`RedisProtocol <asyncio_redis.RedisProtocol>`
+class directly, use the :class:`Connection <asyncio_redis.Connection>` class,
+or use the :class:`Pool <asyncio_redis.Pool>` wrapper which also offers
 connection pooling.
 
-- :class:`asyncio_redis.RedisProtocol`
-- :class:`asyncio_redis.Connection`
-- :class:`asyncio_redis.Pool`
-
+The Protocol
+------------
 
 .. autoclass:: asyncio_redis.RedisProtocol
     :members:
@@ -18,15 +17,48 @@ connection pooling.
 
 .. autoclass:: asyncio_redis.RedisBytesProtocol
 
+Connection
+----------
+
 .. autoclass:: asyncio_redis.Connection
     :members:
 
 .. autoclass:: asyncio_redis.BytesConnection
 
+Connection pool
+---------------
+
 .. autoclass:: asyncio_redis.Pool
     :members:
 
 .. autoclass:: asyncio_redis.BytesPool
+
+Command replies
+---------------
+
+.. autoclass:: asyncio_redis.StatusReply
+    :members:
+
+.. autoclass:: asyncio_redis.DictReply
+    :members:
+
+.. autoclass:: asyncio_redis.ListReply
+    :members:
+
+.. autoclass:: asyncio_redis.SetReply
+    :members:
+
+.. autoclass:: asyncio_redis.ZRangeReply
+    :members:
+
+.. autoclass:: asyncio_redis.PubSubReply
+    :members:
+
+.. autoclass:: asyncio_redis.BlockingPopReply
+    :members:
+
+Utils
+-----
 
 .. autoclass:: asyncio_redis.ZScoreBoundary
     :members:
@@ -42,3 +74,4 @@ connection pooling.
 
 .. autoclass:: asyncio_redis.ZAggregate
     :members:
+

@@ -86,7 +86,9 @@ class SetReply:
     """
     Redis set result.
     The content can be retrieved by calling ``get_as_set`` or by
-    iterating over it::
+    iterating over it
+
+    ::
 
         for f in set_reply:
             item = yield from f
@@ -113,7 +115,9 @@ class ListReply:
     """
     Redis list result.
     The content can be retrieved by calling ``get_as_list`` or by
-    iterating over it::
+    iterating over it
+
+    ::
 
         for f in list_reply:
             item = yield from f
@@ -135,7 +139,10 @@ class ListReply:
 
 
 class BlockingPopReply:
-    """ ``blpop`` or ``brpop`` reply """
+    """
+    :func:`blpop <asyncio_redis.RedisProtocol.blpop>` or :func:`brpop
+    <asyncio_redis.RedisProtocol.brpop>` reply
+    """
     def __init__(self, list_name, value):
         self._list_name = list_name
         self._value = value

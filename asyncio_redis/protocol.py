@@ -56,14 +56,14 @@ class ZAggregate: # TODO: use the Python 3.4 enum type.
     Aggregation method for zinterstore and zunionstore.
     """
 
+    #: Sum aggregation.
     SUM = 'SUM'
-    """ Sum aggregation. """
 
+    #: Min aggregation.
     MIN = 'MIN'
-    """ Min aggregation. """
 
+    #: Max aggregation.
     MAX = 'MAX'
-    """ Max aggregation. """
 
 
 class PipelinedCall:
@@ -333,33 +333,23 @@ class RedisProtocol(asyncio.Protocol):
         self.loop = asyncio.get_event_loop()
         transport, protocol = yield from loop.create_connection(RedisProtocol, 'localhost', 6379)
     """
+    #: Redis keeps all values in binary. Set the encoding to be used to
+    #: decode/encode Python string values from and to binary.
     encoding = 'utf-8'
-    """
-    Redis keeps all values in binary. Set the encoding to be used to
-    decode/encode Python string values from and to binary.
-    """
 
+    #: The native Python type from which we encode, or to which we decode.
     native_type = str
-    """
-    The native Python type from which we encode, or to which we decode.
-    """
 
+    #: Password to be send using the "AUTH" command when a connection has been
+    #: established.
     password = None
-    """
-    Password to be send using the "AUTH" command when a connection has been
-    established.
-    """
 
+    #: Database to connect using "SELECT" when a connection has been established.
     db = 0
-    """
-    Database to connect using "SELECT" when a connection has been established.
-    """
 
+    #: When ``True``, check argument types for all redis commands. Normally you
+    #: want to have this enabled.
     enable_typechecking = True
-    """
-    When ``True``, check argument types for all redis commands. Normally you
-    want to have this enabled.
-    """
 
     def __init__(self):
         self.transport = None

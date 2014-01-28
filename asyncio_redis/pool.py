@@ -22,10 +22,8 @@ class Pool:
         result = yield from connection.set('key', 'value')
     """
 
+    #: The :class:`RedisProtocol` class to be used for each connection in this pool.
     protocol = RedisProtocol
-    """
-    The :class:`RedisProtocol` class to be used for each connection in this pool.
-    """
 
     @classmethod
     def get_connection_class(cls):

@@ -17,10 +17,9 @@ class Connection:
         connection = yield from Connection.create(host='localhost', port=6379)
         result = yield from connection.set('key', 'value')
     """
+    #: The :class:`RedisProtocol <asyncio_redis.RedisProtocol>` class to be
+    #: used for this connection.
     protocol = RedisProtocol
-    """
-    The :class:`RedisProtocol` class to be used this connection.
-    """
 
     @classmethod
     @asyncio.coroutine

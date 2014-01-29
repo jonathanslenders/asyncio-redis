@@ -95,6 +95,7 @@ class Connection:
 
 class BytesConnection(Connection):
     """
-    Identical to :class:`Connection`, but uses :class:`RedisBytesProtocol` instead.
+    Identical to :class:`Connection <asyncio_redis.Connection>`, but uses
+    :class:`RedisBytesProtocol <asyncio_redis.RedisBytesProtocol>` instead.
     """
     protocol = RedisBytesProtocol

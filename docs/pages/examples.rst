@@ -3,37 +3,6 @@
 Examples
 =========
 
-The :class:`RedisProtocol <asyncio_redis.RedisProtocol>` class
---------------------------------------------------------------
-
-The most low level way of accessing the redis server through this library is
-probably by creating a connection with the `RedisProtocol` yourself. You can do
-it as follows:
-
-.. code:: python
-
-    import asyncio
-    import asyncio_redis
-
-    @asyncio.coroutine
-    def example():
-        loop = asyncio.get_event_loop()
-
-        # Create Redis connection
-        transport, protocol = yield from loop.create_connection(
-                    asyncio_redis.RedisProtocol, 'localhost', 6379)
-
-        # Set a key
-        yield from protocol.set('my_key', 'my_value')
-
-        # Get a key
-        result = yield from protocol.get('my_key')
-        print(result)
-
-    if __name__ == '__main__':
-        asyncio.get_event_loop().run_until_complete(example())
-
-
 The :class:`Connection <asyncio_redis.Connection>` class
 --------------------------------------------------------
 
@@ -101,7 +70,7 @@ with :func:`exec <asyncio_redis.Transaction.exec>`.
     @asyncio.coroutine
     def example(loop):
         # Create Redis connection
-        connection = yield from asyncio_redis.Connection.create(host='localhost', port=6379, poolsize=10)
+        connection = yield from asyncio_redis.Pool.create(host='localhost', port=6379, poolsize=10)
 
         # Create transaction
         transaction = yield from connection.multi()
@@ -186,3 +155,40 @@ function -- which can be used to register a LUA script -- returns a
         # Run script
         result = yield from multiply.run(keys=['my_key'], args=['5'])
         print(result) # prints 2 * 5
+
+
+The :class:`RedisProtocol <asyncio_redis.RedisProtocol>` class
+--------------------------------------------------------------
+
+The most low level way of accessing the redis server through this library is
+probably by creating a connection with the `RedisProtocol` yourself. You can do
+it as follows:
+
+.. code:: python
+
+    import asyncio
+    import asyncio_redis
+
+    @asyncio.coroutine
+    def example():
+        loop = asyncio.get_event_loop()
+
+        # Create Redis connection
+        transport, protocol = yield from loop.create_connection(
+                    asyncio_redis.RedisProtocol, 'localhost', 6379)
+
+        # Set a key
+        yield from protocol.set('my_key', 'my_value')
+
+        # Get a key
+        result = yield from protocol.get('my_key')
+        print(result)
+
+    if __name__ == '__main__':
+        asyncio.get_event_loop().run_until_complete(example())
+
+
+.. note:: It is not recommended to use the Protocol class directly, because the
+          low-level Redis implementation could change. Prefer the
+          :class:`Connection <asyncio.Connection>` or :class:`Pool
+          <asyncio.Pool>` class as demonstrated below if possible.

@@ -28,8 +28,9 @@ class Pool:
     @classmethod
     def get_connection_class(cls):
         """
-        Return the :class:`Connection` class to be used for every connection in
-        this pool. Normally this is just a ``Connection`` using the defined ``protocol``.
+        Return the connection class to be used for every connection in this
+        pool. Normally this is just :class:`asyncio_redis.Connection` using the
+        defined ``protocol``.
         """
         class ConnectionClass(Connection):
             protocol = cls.protocol

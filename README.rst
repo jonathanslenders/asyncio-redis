@@ -32,33 +32,6 @@ View documentation at `read-the-docs`_
 .. _read-the-docs: http://asyncio-redis.readthedocs.org/en/latest/
 
 
-Example using the Protocol class
---------------------------------
-
-.. code:: python
-
-    import asyncio
-    import asyncio_redis
-
-    @asyncio.coroutine
-    def example():
-        loop = asyncio.get_event_loop()
-
-        # Create Redis connection
-        transport, protocol = yield from loop.create_connection(
-                    asyncio_redis.RedisProtocol, 'localhost', 6379)
-
-        # Set a key
-        yield from protocol.set('my_key', 'my_value')
-
-        # Get a key
-        result = yield from protocol.get('my_key')
-        print(result)
-
-    if __name__ == '__main__':
-        asyncio.get_event_loop().run_until_complete(example())
-
-
 The connection class
 --------------------
 
@@ -113,7 +86,7 @@ Transactions example
     @asyncio.coroutine
     def example():
         # Create Redis connection
-        connection = yield from asyncio_redis.Connection.create(host='localhost', port=6379, poolsize=10)
+        connection = yield from asyncio_redis.Pool.create(host='localhost', port=6379, poolsize=10)
 
         # Create transaction
         transaction = yield from connection.multi()
@@ -180,13 +153,41 @@ LUA Scripting example
 
         # Set a key
         yield from connection.set('my_key', '2')
-        
+
         # Register script
         multiply = yield from connection.register_script(code)
-        
+
         # Run script
         result = yield from multiply.run(keys=['my_key'], args=['5'])
         print(result) # prints 2 * 5
+
+
+Example using the Protocol class
+--------------------------------
+
+.. code:: python
+
+    import asyncio
+    import asyncio_redis
+
+    @asyncio.coroutine
+    def example():
+        loop = asyncio.get_event_loop()
+
+        # Create Redis connection
+        transport, protocol = yield from loop.create_connection(
+                    asyncio_redis.RedisProtocol, 'localhost', 6379)
+
+        # Set a key
+        yield from protocol.set('my_key', 'my_value')
+
+        # Get a key
+        result = yield from protocol.get('my_key')
+        print(result)
+
+    if __name__ == '__main__':
+        asyncio.get_event_loop().run_until_complete(example())
+
 
 
 .. |Build Status| image:: https://travis-ci.org/jonathanslenders/asyncio-redis.png

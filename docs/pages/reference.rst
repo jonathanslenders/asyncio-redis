@@ -23,6 +23,7 @@ Connection
 
 .. autoclass:: asyncio_redis.Connection
     :members:
+    :exclude-members: register_script
 
 .. autoclass:: asyncio_redis.BytesConnection
 

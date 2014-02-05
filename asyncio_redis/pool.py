@@ -1,5 +1,4 @@
 from .connection import Connection
-from .encoders import UTF8Encoder
 from .exceptions import NoAvailableConnectionsInPoolError
 from .protocol import RedisProtocol, Script
 
@@ -23,26 +22,27 @@ class Pool:
         pool = yield from Pool.create(host='localhost', port=6379, poolsize=10)
         result = yield from connection.set('key', 'value')
     """
-
-    #: The :class:`RedisProtocol` class to be used for each connection in this pool.
-    protocol = RedisProtocol
-
-    @classmethod
-    def get_connection_class(cls):
-        """
-        Return the connection class to be used for every connection in this
-        pool. Normally this is just :class:`asyncio_redis.Connection` using the
-        defined ``protocol``.
-        """
-        class ConnectionClass(Connection):
-            protocol = cls.protocol
-        return ConnectionClass
-
     @classmethod
     @asyncio.coroutine
-    def create(cls, host='localhost', port=6379, password=None, db=0, encoder=UTF8Encoder(), poolsize=1, auto_reconnect=True, loop=None):
+    def create(cls, host='localhost', port=6379, password=None, db=0, encoder=None, poolsize=1, auto_reconnect=True, loop=None):
         """
-        Create a new connection instance.
+        Create a new connection pool instance.
+
+        :param host: Address
+        :type host: str
+        :param port: TCP port.
+        :type port: int
+        :param password: Redis database password
+        :type password: bytes
+        :param db: Redis database
+        :type db: int
+        :param encoder: Encoder to use for encoding to or decoding from redis bytes to a native type.
+        :type encoder: :class:`asyncio_redis.encoders.BaseEncoder` subclass.
+        :param poolsize: The number of parallel connections.
+        :type poolsize: int
+        :param auto_reconnect: Enable auto reconnect
+        :type auto_reconnect: bool
+        :param loop: (optional) asyncio event loop.
         """
         self = cls()
         self._host = host
@@ -53,8 +53,7 @@ class Pool:
         self._connections = []
 
         for i in range(poolsize):
-            connection_class = cls.get_connection_class()
-            connection = yield from connection_class.create(host=host, port=port, password=password,
+            connection = yield from Connection.create(host=host, port=port, password=password,
                             db=db, encoder=encoder, auto_reconnect=auto_reconnect, loop=loop)
             self._connections.append(connection)
 

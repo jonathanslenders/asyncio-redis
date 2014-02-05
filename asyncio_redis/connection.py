@@ -1,5 +1,4 @@
 from .protocol import RedisProtocol, _all_commands
-from .encoders import UTF8Encoder
 from asyncio.log import logger
 import asyncio
 import logging
@@ -13,6 +12,7 @@ class Connection:
     Wrapper around the protocol and transport which takes care of establishing
     the connection and reconnecting it.
 
+
     ::
 
         connection = yield from Connection.create(host='localhost', port=6379)
@@ -20,7 +20,7 @@ class Connection:
     """
     @classmethod
     @asyncio.coroutine
-    def create(cls, host='localhost', port=6379, password=None, db=0, encoder=UTF8Encoder(), auto_reconnect=True, loop=None):
+    def create(cls, host='localhost', port=6379, password=None, db=0, encoder=None, auto_reconnect=True, loop=None):
         """
         :param host: Address
         :type host: str
@@ -32,9 +32,9 @@ class Connection:
         :type db: int
         :param encoder: Encoder to use for encoding to or decoding from redis bytes to a native type.
         :type encoder: :class:`asyncio_redis.encoders.BaseEncoder` subclass.
-        :param auto_reconnect:
+        :param auto_reconnect: Enable auto reconnect
         :type auto_reconnect: bool
-        :param loop: asyncio event loop.
+        :param loop: (optional) asyncio event loop.
         """
         connection = cls()
 

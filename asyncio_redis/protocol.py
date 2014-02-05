@@ -346,7 +346,10 @@ class RedisProtocol(asyncio.Protocol):
                                 enabled.
     :type enable_typechecking: bool
     """
-    def __init__(self, password=None, db=0, encoder=UTF8Encoder(), connection_lost_callback=None, enable_typechecking=True):
+    def __init__(self, password=None, db=0, encoder=None, connection_lost_callback=None, enable_typechecking=True):
+        if encoder is None:
+            encoder = UTF8Encoder()
+
         assert not password or isinstance(password, bytes)
         assert isinstance(db, int)
         assert isinstance(encoder, BaseEncoder)

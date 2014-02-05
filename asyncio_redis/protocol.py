@@ -5,8 +5,9 @@ import logging
 import types
 
 from asyncio.futures import Future
-from asyncio.queues import Queue
 from asyncio.log import logger
+from asyncio.queues import Queue
+from asyncio.streams import StreamReader
 
 from collections import deque
 from functools import wraps
@@ -92,8 +93,8 @@ class MultiBulkReply:
 
     def __iter__(self):
         """
-        Iterate over the reply. This yields futures of the decoded packets. It
-        decode bytes automatically using protocol.decode_to_native.
+        Iterate over the reply. This yields coroutines of the decoded packets.
+        It decode bytes automatically using protocol.decode_to_native.
         """
         @asyncio.coroutine
         def auto_decode(f):
@@ -390,6 +391,11 @@ class RedisProtocol(asyncio.Protocol):
         self._is_connected = True
         logger.log(logging.INFO, 'Redis connection made')
 
+        # Start parsing reader stream.
+        self._reader = StreamReader()
+        self._reader.set_transport(transport)
+        self._reader_f = asyncio.async(self._reader_coroutine())
+
         @asyncio.coroutine
         def initialize():
             # If a password or database was been given, first connect to that one.
@@ -411,21 +417,7 @@ class RedisProtocol(asyncio.Protocol):
 
     def data_received(self, data):
         """ Process data received from Redis server.  """
-        self._buffer += data
-
-        # When \r\n appears at least once in the current buffer, parse all the
-        # lines that are terminated with \r\n. The remaining part is put back
-        # in the buffer.
-        lines = self._buffer.split(b'\r\n')
-        self._buffer = lines.pop()
-
-        for line in lines:
-            if self._in_bulk_reply:
-                self._handle_bulk_reply_part(line)
-            else:
-                # Handle line
-                first_byte, line = line[:1], line[1:]
-                self._line_received_handlers[first_byte](line)
+        self._reader.feed_data(data)
 
     def encode_from_native(self, data:NativeType) -> bytes:
         """
@@ -462,10 +454,21 @@ class RedisProtocol(asyncio.Protocol):
 
     def eof_received(self):
         logger.log(logging.INFO, 'EOF received in RedisProtocol')
+        self._reader.feed_eof()
 
     def connection_lost(self, exc):
+        if exc is None:
+            self._reader.feed_eof()
+        else:
+            self._reader.set_exception(exc)
+
+        if self._reader_f:
+            self._reader_f.cancel()
+
         self._is_connected = False
         self.transport = None
+        self._reader = None
+        self._reader_f = None
 
         # Raise exception on all waiting futures.
         while self._queue:
@@ -503,73 +506,85 @@ class RedisProtocol(asyncio.Protocol):
 
     # Handle replies
 
-    def _handle_status_reply(self, line):
-        self._push_answer(StatusReply(line.decode('ascii')))
+    @asyncio.coroutine
+    def _reader_coroutine(self):
+        """
+        Coroutine which reads input from the stream reader and processes it.
+        """
+        def item_callback(item):
+            f = self._queue.popleft()
 
-    def _handle_int_reply(self, line):
-        self._push_answer(int(line))
+            if isinstance(item, Exception):
+                f.set_exception(item)
+            else:
+                f.set_result(item)
 
-    def _handle_error_reply(self, line):
-        self._push_answer(ErrorReply(line.decode('ascii')))
+        while True:
+            try:
+                yield from self._handle_item(item_callback)
+            except ConnectionLostError:
+                return
 
-    def _handle_bulk_reply(self, line):
-        if int(line) == -1:
-            # Null bulk reply
-            self._push_answer(None)
+    @asyncio.coroutine
+    def _handle_item(self, cb):
+        c = yield from self._reader.read(1)
+        yield from self._line_received_handlers[c](cb)
+
+    @asyncio.coroutine
+    def _handle_status_reply(self, cb):
+        line = (yield from self._reader.readline()).rstrip(b'\r\n')
+        cb(StatusReply(line.decode('ascii')))
+
+    @asyncio.coroutine
+    def _handle_int_reply(self, cb):
+        line = (yield from self._reader.readline()).rstrip(b'\r\n')
+        cb(int(line))
+
+    @asyncio.coroutine
+    def _handle_error_reply(self, cb):
+        line = (yield from self._reader.readline()).rstrip(b'\r\n')
+        cb(ErrorReply(line.decode('ascii')))
+
+    @asyncio.coroutine
+    def _handle_bulk_reply(self, cb):
+        length = int((yield from self._reader.readline()).rstrip(b'\r\n'))
+        if length == -1:
+            # None bulk reply
+            cb(None)
         else:
-            self._in_bulk_reply = True
-            self._bulk_reply_len = int(line)
-            self._bulk_reply_buffer = b''
+            # Read data
+            data = yield from self._reader.read(length)
+            cb(data)
 
-    def _handle_bulk_reply_part(self, line):
-        self._bulk_reply_buffer += line
-        self._bulk_reply_buffer += b'\r\n'
+            # Ignore trailing newline.
+            remaining = yield from self._reader.readline()
+            assert remaining.rstrip(b'\r\n') == b''
 
-        if len(self._bulk_reply_buffer) > self._bulk_reply_len:
-            value = self._bulk_reply_buffer[:self._bulk_reply_len]
-
-            # Bulk reply came in.
-            self._push_answer(value)
-
-            self._in_bulk_reply = False
-            self._bulk_reply_len = 0
-            self._bulk_reply_buffer = b''
-
-    def _handle_multi_bulk_reply(self, line):
-        count = int(line)
+    @asyncio.coroutine
+    def _handle_multi_bulk_reply(self, cb):
+                # NOTE: the reason for passing the callback `cb` in here is
+                #       mainly because we want to return the result object
+                #       especially in this case before the input is read
+                #       completely. This allows a streaming API.
+        count = int((yield from self._reader.readline()).rstrip(b'\r\n'))
 
         # Handle multi-bulk none.
         # (Used when a transaction exec fails.)
         if count == -1:
-            self._push_answer(None)
+            cb(None)
             return
 
-        # Create a queue for receiving the multi-bulk reply
         reply = MultiBulkReply(self, count)
 
         # Return the empty queue immediately as an answer.
         if self._in_pubsub:
-            asyncio.Task(self._handle_pubsub_multibulk_reply(reply))
+            asyncio.async(self._handle_pubsub_multibulk_reply(reply))
         else:
-            self._push_answer(reply)
+            cb(reply)
 
-        # Create futures to be inserted before other replies.
-        futures = [ Future() for f in range(count) ] # TODO: the allocation of these futures is very slow... if we talk about millions.
-        for f in futures[::-1]:
-            self._queue.appendleft(f)
-
-        @asyncio.coroutine
-        def handle_results():
-            # Wait for the next N items to come in, copy
-            for f in futures:
-                # Wait for the next item to be received
-                item = yield from f
-
-                # Put it on the queue (Don't wait here -- we don't even know
-                # whether the receiving end still reads the output.)
-                reply.queue.put_nowait(item)
-
-        asyncio.Task(handle_results())
+        # Wait for all multi bulk reply content.
+        for i in range(count):
+            yield from self._handle_item(reply.queue.put_nowait)
 
     @asyncio.coroutine
     def _handle_pubsub_multibulk_reply(self, multibulk_reply):
@@ -580,8 +595,8 @@ class RedisProtocol(asyncio.Protocol):
             channel, value = result[1], result[2]
             yield from self._subscription._messages_queue.put(PubSubReply(channel, value))
         else:
-            # In case of 'subscribe'/'unsubscribe', we already converted the MultiBulkReply to a list,
-            # so we just hand over the list.
+            # In case of 'subscribe'/'unsubscribe', we already converted the
+            # MultiBulkReply to a list, so we just hand over the list.
             self._push_answer(result)
 
     # Redis operations.

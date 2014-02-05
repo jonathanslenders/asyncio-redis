@@ -11,7 +11,7 @@ if __name__ == '__main__':
     logging.getLogger().setLevel(logging.INFO)
 
     def run():
-        connection = yield from asyncio_redis.Connection.create(host='localhost', port=6379)
+        #connection = yield from asyncio_redis.Connection.create(host='localhost', port=6379)
         connection = yield from asyncio_redis.Pool.create(host='localhost', port=6379, poolsize=50)
 
         # === Benchmark 1 ==

@@ -134,12 +134,18 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertEqual(value, u'my_value')
 
     @redis_test
-    def test_with_spaces(self, transport, protocol):
+    def test_special_characters(self, transport, protocol):
         # Test some special unicode values and spaces.
         value = u'my value with special chars " # éçåø´¨åø´h '
 
         result = yield from protocol.set(u'my key with spaces', value)
         result = yield from protocol.get(u'my key with spaces')
+        self.assertEqual(result, value)
+
+        # Test newlines
+        value = u'ab\ncd\ref\r\ngh'
+        result = yield from protocol.set(u'my-key', value)
+        result = yield from protocol.get(u'my-key')
         self.assertEqual(result, value)
 
     @redis_test

@@ -1,10 +1,11 @@
-from .protocol import RedisProtocol, RedisBytesProtocol, _all_commands
+from .protocol import RedisProtocol, _all_commands
+from .encoders import UTF8Encoder
 from asyncio.log import logger
 import asyncio
 import logging
 
 
-__all__ = ('Connection', 'BytesConnection')
+__all__ = ('Connection', )
 
 
 class Connection:
@@ -17,13 +18,9 @@ class Connection:
         connection = yield from Connection.create(host='localhost', port=6379)
         result = yield from connection.set('key', 'value')
     """
-    #: The :class:`RedisProtocol <asyncio_redis.RedisProtocol>` class to be
-    #: used for this connection.
-    protocol = RedisProtocol
-
     @classmethod
     @asyncio.coroutine
-    def create(cls, host='localhost', port=6379, loop=None, password=None, db=0, auto_reconnect=True):
+    def create(cls, host='localhost', port=6379, password=None, db=0, encoder=UTF8Encoder(), auto_reconnect=True, loop=None):
         connection = cls()
 
         connection.host = host
@@ -32,15 +29,12 @@ class Connection:
         connection._retry_interval = .5
 
         # Create protocol instance
-        protocol_factory = type('RedisProtocol', (cls.protocol,), { 'password': password, 'db': db })
+        def connection_lost():
+            if auto_reconnect:
+                asyncio.Task(connection._reconnect())
 
-        if auto_reconnect:
-            class protocol_factory(protocol_factory):
-                def connection_lost(self, exc):
-                    super().connection_lost(exc)
-                    asyncio.Task(connection._reconnect())
-
-        connection.protocol = protocol_factory()
+        # Create protocol instance
+        connection.protocol = RedisProtocol(password=password, db=db, encoder=encoder, connection_lost_callback=connection_lost)
 
         # Connect
         yield from connection._reconnect()
@@ -91,11 +85,3 @@ class Connection:
 
     def __repr__(self):
         return 'Connection(host=%r, port=%r)' % (self.host, self.port)
-
-
-class BytesConnection(Connection):
-    """
-    Identical to :class:`Connection <asyncio_redis.Connection>`, but uses
-    :class:`RedisBytesProtocol <asyncio_redis.RedisBytesProtocol>` instead.
-    """
-    protocol = RedisBytesProtocol

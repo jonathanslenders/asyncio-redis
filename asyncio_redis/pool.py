@@ -1,11 +1,13 @@
-from .connection import Connection, BytesConnection
+from .connection import Connection
+from .encoders import UTF8Encoder
 from .exceptions import NoAvailableConnectionsInPoolError
-from .protocol import RedisProtocol, RedisBytesProtocol, Script
+from .protocol import RedisProtocol, Script
+
 from functools import wraps
 import asyncio
 
 
-__all__ = ('Pool', 'BytesPool', )
+__all__ = ('Pool', )
 
 
 class Pool:
@@ -38,7 +40,7 @@ class Pool:
 
     @classmethod
     @asyncio.coroutine
-    def create(cls, host='localhost', port=6379, loop=None, password=None, db=0, poolsize=1, auto_reconnect=True):
+    def create(cls, host='localhost', port=6379, password=None, db=0, encoder=UTF8Encoder(), poolsize=1, auto_reconnect=True, loop=None):
         """
         Create a new connection instance.
         """
@@ -52,8 +54,8 @@ class Pool:
 
         for i in range(poolsize):
             connection_class = cls.get_connection_class()
-            connection = yield from connection_class.create(host=host, port=port, loop=loop,
-                            password=password, db=db, auto_reconnect=auto_reconnect)
+            connection = yield from connection_class.create(host=host, port=port, password=password,
+                            db=db, encoder=encoder, auto_reconnect=auto_reconnect, loop=loop)
             self._connections.append(connection)
 
         return self
@@ -123,11 +125,3 @@ class Pool:
 
         # Return a new script instead that runs it on any connection of the pool.
         return Script(script.sha, script.code, lambda: self.evalsha)
-
-
-class BytesPool:
-    """
-    Identical to :class:`.Pool`, but uses :class:`.RedisBytesProtocol` instead.
-    """
-    protocol = RedisBytesProtocol
-

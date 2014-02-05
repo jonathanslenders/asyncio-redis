@@ -18,6 +18,21 @@ The Protocol
 
 .. autoclass:: asyncio_redis.RedisBytesProtocol
 
+
+Encoders
+----------
+
+.. autoclass:: asyncio_redis.encoders.BaseEncoder
+    :members:
+    :undoc-members:
+
+.. autoclass:: asyncio_redis.encoders.UTF8Encoder
+    :members:
+
+.. autoclass:: asyncio_redis.encoders.BytesEncoder
+    :members:
+
+
 Connection
 ----------
 

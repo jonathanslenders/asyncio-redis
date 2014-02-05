@@ -157,6 +157,32 @@ function -- which can be used to register a LUA script -- returns a
         print(result) # prints 2 * 5
 
 
+Raw bytes or UTF-8
+------------------
+
+The redis protocol only knows about bytes, but normally you want to use strings
+in your Python code. ``asyncio_redis`` is helpful and installs an encoder that
+does this conversion automatically, using the UTF-8 codec. However, sometimes
+you want to access raw bytes. This is possible by passing a
+:class:`BytesEncoder <asyncio_redis.encoders.BytesEncoder>` instance to the
+connection, pool or protocol.
+
+.. code:: python
+
+    import asyncio
+    import asyncio_redis
+
+    from asyncio_redis.encoders import BytesEncoder
+
+    @asyncio.coroutine
+    def example():
+        # Create Redis connection
+        connection = yield from asyncio_redis.Connection.create(host='localhost', port=6379, encoder=BytesEncoder())
+
+        # Set a key
+        yield from connection.set(b'my_key', b'my_value')
+
+
 The :class:`RedisProtocol <asyncio_redis.RedisProtocol>` class
 --------------------------------------------------------------
 

@@ -14,11 +14,11 @@ from functools import wraps
 from inspect import getfullargspec, formatargspec, getcallargs
 
 from .exceptions import Error, ErrorReply, TransactionError, NotConnectedError, ConnectionLostError, NoRunningScriptError, ScriptKilledError
-from .replies import *
+from .encoders import BaseEncoder, UTF8Encoder
+from .replies import * # XXX: no star import!!!!
 
 __all__ = (
     'RedisProtocol',
-    'RedisBytesProtocol',
     'Transaction',
     'Subscription',
     'Script',
@@ -287,7 +287,7 @@ def _command(method):
                 DictReply: ":class:`DictReply <asyncio_redis.DictReply>`",
                 ListReply: ":class:`ListReply <asyncio_redis.ListReply>`",
                 MultiBulkReply: ":class:`MultiBulkReply <asyncio_redis.MultiBulkReply>`",
-                NativeType: "Native Python type, as defined by :attr:`native_type <asyncio_redis.RedisProtocol.native_type>`",
+                NativeType: "Native Python type, as defined by :attr:`encoder.native_type <asyncio_redis.encoders.BaseEncoder.native_type>`",
                 NoneType: "None",
                 SetReply: ":class:`SetReply <asyncio_redis.SetReply>`",
                 StatusReply: ":class:`StatusReply <asyncio_redis.StatusReply>`",
@@ -298,6 +298,7 @@ def _command(method):
                 dict: 'dict',
                 float: 'float',
                 str: 'str',
+                bytes: 'bytes',
             }[type_]
         except KeyError:
             if isinstance(type_, ListOf):
@@ -333,26 +334,34 @@ class RedisProtocol(asyncio.Protocol):
 
         self.loop = asyncio.get_event_loop()
         transport, protocol = yield from loop.create_connection(RedisProtocol, 'localhost', 6379)
+
+    :param password: Redis database password
+    :type password: bytes
+    :param encoder: Class to use for encoding to or decoding from redis bytes.
+    :type encoder: :class:`asyncio.encoders.BaseEncoder` subclass.
+    :param db: Redis database
+    :type db: int
+    :param enable_typechecking: When ``True``, check argument types for all
+                                redis commands. Normally you want to have this
+                                enabled.
+    :type enable_typechecking: bool
     """
-    #: Redis keeps all values in binary. Set the encoding to be used to
-    #: decode/encode Python string values from and to binary.
-    encoding = 'utf-8'
+    def __init__(self, password=None, db=0, encoder=UTF8Encoder(), connection_lost_callback=None, enable_typechecking=True):
+        assert not password or isinstance(password, bytes)
+        assert isinstance(db, int)
+        assert isinstance(encoder, BaseEncoder)
+        assert encoder.native_type, 'Encoder.native_type not defined'
 
-    #: The native Python type from which we encode, or to which we decode.
-    native_type = str
+        self.password = password
+        self.db = db
+        self._connection_lost_callback = connection_lost_callback
 
-    #: Password to be send using the "AUTH" command when a connection has been
-    #: established.
-    password = None
+        # Take encode / decode settings from encoder
+        self.encode_from_native = encoder.encode_from_native
+        self.decode_to_native = encoder.decode_to_native
+        self.native_type = encoder.native_type
+        self.enable_typechecking = enable_typechecking
 
-    #: Database to connect using "SELECT" when a connection has been established.
-    db = 0
-
-    #: When ``True``, check argument types for all redis commands. Normally you
-    #: want to have this enabled.
-    enable_typechecking = True
-
-    def __init__(self):
         self.transport = None
         self._queue = deque() # Input parser queues
         self._messages_queue = None # Pubsub queue
@@ -419,22 +428,6 @@ class RedisProtocol(asyncio.Protocol):
         """ Process data received from Redis server.  """
         self._reader.feed_data(data)
 
-    def encode_from_native(self, data:NativeType) -> bytes:
-        """
-        Encodes the native Python type to network bytes.
-        Usually this will encode a string object to bytes using the UTF-8
-        encoding. You can either override this function, or set the
-        `encoding` attribute.
-        """
-        return data.encode(self.encoding)
-
-    def decode_to_native(self, data:bytes) -> NativeType:
-        """
-        Decodes network bytes to a Python native type.
-        It should always be the reverse operation of `encode_from_native`.
-        """
-        return data.decode(self.encoding)
-
     def _encode_int(self, value:int) -> bytes:
         """ Encodes an integer to bytes. (always ascii) """
         return str(value).encode('ascii')
@@ -476,6 +469,10 @@ class RedisProtocol(asyncio.Protocol):
             f.set_exception(ConnectionLostError(exc))
 
         logger.log(logging.INFO, 'Redis connection lost')
+
+        # Call connection_lost callback
+        if self._connection_lost_callback:
+            self._connection_lost_callback()
 
     # Request state
 
@@ -681,10 +678,12 @@ class RedisProtocol(asyncio.Protocol):
 
     # Internal
 
-    def _auth(self, password):
-        return self._query(b'auth', self.encode_from_native(password))
+    @_command
+    def _auth(self, password:bytes) -> StatusReply:
+        return self._query(b'auth', password)
 
-    def _select(self, db:int):
+    @_command
+    def _select(self, db:int) -> StatusReply:
         return self._query(b'select', self._encode_int(db))
 
     # Strings
@@ -1609,20 +1608,6 @@ class RedisProtocol(asyncio.Protocol):
 
         result = yield from self._query(b'unwatch')
         assert result == StatusReply('OK')
-
-
-class RedisBytesProtocol(RedisProtocol):
-    """
-    Protocol class that doesn't decode the Redis bytes to str.
-    This is very useful for doing bit operations.
-    """
-    native_type = bytes
-
-    def encode_from_native(self, data:bytes) -> bytes:
-        return data
-
-    def decode_to_native(self, data:bytes) -> bytes:
-        return data
 
 
 class Script:

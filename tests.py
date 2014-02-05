@@ -17,7 +17,6 @@ from asyncio_redis import (
         NotConnectedError,
         Pool,
         PubSubReply,
-        RedisBytesProtocol,
         RedisProtocol,
         Script,
         ScriptKilledError,
@@ -29,6 +28,7 @@ from asyncio_redis import (
         ZRangeReply,
         ZScoreBoundary,
 )
+from asyncio_redis.encoders import BytesEncoder, UTF8Encoder
 from threading import Thread
 from time import sleep
 
@@ -811,7 +811,7 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertEqual(result, 3)
 
             # Check result using bytes protocol
-        bytes_transport, bytes_protocol = yield from connect(self.loop, RedisBytesProtocol)
+        bytes_transport, bytes_protocol = yield from connect(self.loop, lambda: RedisProtocol(encoder=BytesEncoder()))
         result = yield from bytes_protocol.get(b'result')
         self.assertIsInstance(result, bytes)
         self.assertEqual(result, bytes((~a % 256, ~a % 256, ~a % 256)))
@@ -1232,7 +1232,7 @@ class RedisProtocolTest(unittest.TestCase):
 class RedisBytesProtocolTest(unittest.TestCase):
     def setUp(self):
         self.loop = asyncio.get_event_loop()
-        self.protocol_class = RedisBytesProtocol
+        self.protocol_class = lambda: RedisProtocol(encoder=BytesEncoder())
 
     @redis_test
     def test_bytes_protocol(self, transport, protocol):

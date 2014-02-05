@@ -337,8 +337,8 @@ class RedisProtocol(asyncio.Protocol):
 
     :param password: Redis database password
     :type password: bytes
-    :param encoder: Class to use for encoding to or decoding from redis bytes.
-    :type encoder: :class:`asyncio.encoders.BaseEncoder` subclass.
+    :param encoder: Encoder to use for encoding to or decoding from redis bytes to a native type.
+    :type encoder: :class:`asyncio_redis.encoders.BaseEncoder` subclass.
     :param db: Redis database
     :type db: int
     :param enable_typechecking: When ``True``, check argument types for all

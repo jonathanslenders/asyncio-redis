@@ -43,11 +43,9 @@ class BytesEncoder(BaseEncoder):
     native_type = bytes
 
     def encode_from_native(self, data):
-        """ bytes to bytes """
         return data
 
     def decode_to_native(self, data):
-        """ bytes to bytes """
         return data
 
 

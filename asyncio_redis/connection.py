@@ -21,6 +21,21 @@ class Connection:
     @classmethod
     @asyncio.coroutine
     def create(cls, host='localhost', port=6379, password=None, db=0, encoder=UTF8Encoder(), auto_reconnect=True, loop=None):
+        """
+        :param host: Address
+        :type host: str
+        :param port: TCP port.
+        :type port: int
+        :param password: Redis database password
+        :type password: bytes
+        :param db: Redis database
+        :type db: int
+        :param encoder: Encoder to use for encoding to or decoding from redis bytes to a native type.
+        :type encoder: :class:`asyncio_redis.encoders.BaseEncoder` subclass.
+        :param auto_reconnect:
+        :type auto_reconnect: bool
+        :param loop: asyncio event loop.
+        """
         connection = cls()
 
         connection.host = host

@@ -74,6 +74,23 @@ Command replies
 .. autoclass:: asyncio_redis.BlockingPopReply
     :members:
 
+
+Command replies
+---------------
+
+.. autoclass:: asyncio_redis.cursors.Cursor
+    :members:
+
+.. autoclass:: asyncio_redis.cursors.SetCursor
+    :members:
+
+.. autoclass:: asyncio_redis.cursors.DictCursor
+    :members:
+
+.. autoclass:: asyncio_redis.cursors.ZCursor
+    :members:
+
+
 Utils
 -----
 

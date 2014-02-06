@@ -1588,7 +1588,8 @@ class RedisProtocol(asyncio.Protocol):
     @asyncio.coroutine
     def scan(self, match:NativeType='*') -> Cursor:
         """
-        Walk through the keys space.
+        Walk through the keys space. You can either fetch the items one by one
+        or in bulk.
 
         ::
 
@@ -1599,6 +1600,11 @@ class RedisProtocol(asyncio.Protocol):
                     break
                 else:
                     print(item)
+
+        ::
+
+            cursor = yield from protocol.scan(match='*')
+            items = yield from cursor.fetchall()
         """
         def scanfunc(cursor):
             return self._scan(cursor, match)

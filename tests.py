@@ -7,10 +7,12 @@ from asyncio.tasks import gather
 
 from asyncio_redis import (
         BlockingPopReply,
+        ConfigPairReply,
         Connection,
         DictReply,
         Error,
         ErrorReply,
+        InfoReply,
         ListReply,
         NoAvailableConnectionsInPoolError,
         NoRunningScriptError,
@@ -28,6 +30,7 @@ from asyncio_redis import (
         ZRangeReply,
         ZScoreBoundary,
 )
+from asyncio_redis.cursors import Cursor, SetCursor, DictCursor, ZCursor
 from asyncio_redis.encoders import BytesEncoder, UTF8Encoder
 from threading import Thread
 from time import sleep
@@ -1227,6 +1230,179 @@ class RedisProtocolTest(unittest.TestCase):
         with self.assertRaises(Error) as e:
             transaction = yield from transaction.multi()
         self.assertEqual(e.exception.args[0], 'Multi calls can not be nested.')
+
+    @redis_test
+    def test_password(self, transport, protocol):
+        # Set password
+        result = yield from protocol.config_set('requirepass', 'newpassword')
+        self.assertIsInstance(result, StatusReply)
+
+        # Further redis queries should fail without re-authenticating.
+        with self.assertRaises(ErrorReply) as e:
+            yield from protocol.set('my-key', 'value')
+        self.assertEqual(e.exception.args[0], 'NOAUTH Authentication required.')
+
+        # Reconnect:
+        result = yield from protocol.auth('newpassword')
+        self.assertIsInstance(result, StatusReply)
+
+        # Redis queries should work again.
+        result = yield from protocol.set('my-key', 'value')
+        self.assertIsInstance(result, StatusReply)
+
+        # Try connecting through new Protocol instance.
+        transport2, protocol2 = yield from connect(self.loop, lambda:RedisProtocol(password='newpassword'))
+        result = yield from protocol2.set('my-key', 'value')
+        self.assertIsInstance(result, StatusReply)
+
+        # Reset password
+        result = yield from protocol.config_set('requirepass', '')
+        self.assertIsInstance(result, StatusReply)
+
+    @redis_test
+    def test_condfig(self, transport, protocol):
+        # Config get
+        result = yield from protocol.config_get('loglevel')
+        self.assertIsInstance(result, ConfigPairReply)
+        self.assertEqual(result.parameter, 'loglevel')
+        self.assertIsInstance(result.value, str)
+
+        # Config set
+        result = yield from protocol.config_set('loglevel', result.value)
+        self.assertIsInstance(result, StatusReply)
+
+        # Resetstat
+        result = yield from protocol.config_resetstat()
+        self.assertIsInstance(result, StatusReply)
+
+        # XXX: config_rewrite not tested.
+
+    @redis_test
+    def test_info(self, transport, protocol):
+        result = yield from protocol.info()
+        self.assertIsInstance(result, InfoReply)
+        # TODO: implement and test InfoReply class
+
+        result = yield from protocol.info('CPU')
+        self.assertIsInstance(result, InfoReply)
+
+    @redis_test
+    def test_scan(self, transport, protocol):
+        # Run scan command
+        cursor = yield from protocol.scan(match='*')
+        self.assertIsInstance(cursor, Cursor)
+
+        # Walk through cursor
+        received = []
+        while True:
+            i = yield from cursor.fetchone()
+            if not i: break
+
+            self.assertIsInstance(i, str)
+            received.append(i)
+
+        # The amount of keys should equal 'dbsize'
+        dbsize = yield from protocol.dbsize()
+        self.assertEqual(dbsize, len(received))
+
+        # Test fetchall
+        cursor = yield from protocol.scan(match='*')
+        received2 = yield from cursor.fetchall()
+        self.assertIsInstance(received2, list)
+        self.assertEqual(set(received), set(received2))
+
+    @redis_test
+    def test_set_scan(self, transport, protocol):
+        """ Test sscan """
+        size = 1000
+        items = [ 'value-%i' % i for i in range(size) ]
+
+        # Create a huge set
+        yield from protocol.delete(['my-set'])
+        yield from protocol.sadd('my-set', items)
+
+        # Scan this set.
+        cursor = yield from protocol.sscan('my-set')
+
+        received = []
+        while True:
+            i = yield from cursor.fetchone()
+            if not i: break
+
+            self.assertIsInstance(i, str)
+            received.append(i)
+
+        # Check result
+        self.assertEqual(len(received), size)
+        self.assertEqual(set(received), set(items))
+
+        # Test fetchall
+        cursor = yield from protocol.sscan('my-set')
+        received2 = yield from cursor.fetchall()
+        self.assertIsInstance(received2, set)
+        self.assertEqual(set(received), received2)
+
+    @redis_test
+    def test_dict_scan(self, transport, protocol):
+        """ Test hscan """
+        size = 1000
+        items = { 'key-%i' % i: 'values-%i' % i for i in range(size) }
+
+        # Create a huge set
+        yield from protocol.delete(['my-dict'])
+        yield from protocol.hmset('my-dict', items)
+
+        # Scan this set.
+        cursor = yield from protocol.hscan('my-dict')
+
+        received = {}
+        while True:
+            i = yield from cursor.fetchone()
+            if not i: break
+
+            self.assertIsInstance(i, dict)
+            received.update(i)
+
+        # Check result
+        self.assertEqual(len(received), size)
+        self.assertEqual(received, items)
+
+        # Test fetchall
+        cursor = yield from protocol.hscan('my-dict')
+        received2 = yield from cursor.fetchall()
+        self.assertIsInstance(received2, dict)
+        self.assertEqual(received, received2)
+
+    @redis_test
+    def test_sorted_dict_scan(self, transport, protocol):
+        """ Test zscan """
+        size = 1000
+        items = { 'key-%i' % i: (i + 0.1) for i in range(size) }
+
+        # Create a huge set
+        yield from protocol.delete(['my-z'])
+        yield from protocol.zadd('my-z', items)
+
+        # Scan this set.
+        cursor = yield from protocol.zscan('my-z')
+
+        received = {}
+        while True:
+            i = yield from cursor.fetchone()
+            if not i: break
+
+            self.assertIsInstance(i, dict)
+            received.update(i)
+
+        # Check result
+        self.assertEqual(len(received), size)
+        self.assertEqual(received, items)
+
+        # Test fetchall
+        cursor = yield from protocol.zscan('my-z')
+        received2 = yield from cursor.fetchall()
+        self.assertIsInstance(received2, dict)
+        self.assertEqual(received, received2)
 
 
 class RedisBytesProtocolTest(unittest.TestCase):

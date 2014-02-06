@@ -10,6 +10,8 @@ __all__ = (
     'SetReply',
     'StatusReply',
     'ZRangeReply',
+    'ConfigPairReply',
+    'InfoReply',
 )
 
 
@@ -160,6 +162,31 @@ class BlockingPopReply:
     def __repr__(self):
         return 'BlockingPopReply(list_name=%r, value=%r)' % (self.list_name, self.value)
 
+
+class ConfigPairReply:
+    """ :func:`config_get <asyncio_redis.RedisProtocol.config_get>` reply. """
+    def __init__(self, parameter, value):
+        self._paramater = parameter
+        self._value = value
+
+    @property
+    def parameter(self):
+        """ Config parameter name. """
+        return self._paramater
+
+    @property
+    def value(self):
+        """ Config parameter value. """
+        return self._value
+
+    def __repr__(self):
+        return 'ConfigPairReply(parameter=%r, value=%r)' % (self.parameter, self.value)
+
+
+class InfoReply:
+    """ :func:`info <asyncio_redis.RedisProtocol.info>` reply. """
+    def __init__(self, data):
+        self._data = data
 
 
 class PubSubReply:

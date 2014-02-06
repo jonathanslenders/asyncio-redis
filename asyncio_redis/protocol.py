@@ -16,6 +16,7 @@ from inspect import getfullargspec, formatargspec, getcallargs
 from .exceptions import Error, ErrorReply, TransactionError, NotConnectedError, ConnectionLostError, NoRunningScriptError, ScriptKilledError
 from .encoders import BaseEncoder, UTF8Encoder
 from .replies import * # XXX: no star import!!!!
+from .cursors import Cursor, SetCursor, DictCursor, ZCursor
 
 __all__ = (
     'RedisProtocol',
@@ -99,18 +100,26 @@ class MultiBulkReply:
         @asyncio.coroutine
         def auto_decode(f):
             result = yield from f
-            if isinstance(result, (StatusReply, int, float)):
+            if isinstance(result, (StatusReply, int, float, MultiBulkReply)):
+                # Note that MultiBulkReplies can be nested. e.g. in the 'scan' operation.
                 return result
             elif isinstance(result, bytes):
                 return self.protocol.decode_to_native(result)
             else:
-                raise AssertionError('Invalid type')
+                raise AssertionError('Invalid type: %r' % type(result))
 
         for f in self.iter_raw():
             yield auto_decode(f)
 
     def __repr__(self):
         return 'MultiBulkReply(protocol=%r, count=%r)' % (self.protocol, self.count)
+
+
+class _ScanPart:
+    """ Internal: result chunk of a scan operation. """
+    def __init__(self, new_cursor_pos, items):
+        self.new_cursor_pos = new_cursor_pos
+        self.items = items
 
 
 class _PostProcessor:
@@ -139,6 +148,35 @@ class _PostProcessor:
         assert isinstance(result, MultiBulkReply)
         list_name, value = yield from ListReply(result).get_as_list()
         return BlockingPopReply(list_name, value)
+
+    @asyncio.coroutine
+    def multibulk_as_configpair(protocol, result):
+        assert isinstance(result, MultiBulkReply)
+        parameter, value = yield from ListReply(result).get_as_list()
+        return ConfigPairReply(parameter, value)
+
+    @asyncio.coroutine
+    def multibulk_as_scanpart(protocol, result):
+        """
+        Process scanpart result.
+        This is a multibulk reply of length two, where the first item is the
+        new cursor position and the second item is a nested multi bulk reply
+        containing all the elements.
+        """
+        # Get outer multi bulk reply.
+        assert isinstance(result, MultiBulkReply)
+        new_cursor_pos, items_bulk = yield from ListReply(result).get_as_list()
+        assert isinstance(items_bulk, MultiBulkReply)
+
+        # Read all items for scan chunk in memory. This is fine, because it's
+        # transmitted in chunks of about 10.
+        items = yield from ListReply(items_bulk).get_as_list()
+        return _ScanPart(int(new_cursor_pos), items)
+
+    @asyncio.coroutine
+    def bytes_to_info(protocol, result):
+        assert isinstance(result, bytes)
+        return InfoReply(result)
 
     @asyncio.coroutine
     def int_to_bool(protocol, result):
@@ -284,7 +322,9 @@ def _command(method):
         try:
             return {
                 BlockingPopReply: ":class:`BlockingPopReply <asyncio_redis.BlockingPopReply>`",
+                ConfigPairReply: ":class:`ConfigPairReply <asyncio_redis.ConfigPairReply>`",
                 DictReply: ":class:`DictReply <asyncio_redis.DictReply>`",
+                InfoReply: ":class:`InfoReply <asyncio_redis.InfoReply>`",
                 ListReply: ":class:`ListReply <asyncio_redis.ListReply>`",
                 MultiBulkReply: ":class:`MultiBulkReply <asyncio_redis.MultiBulkReply>`",
                 NativeType: "Native Python type, as defined by :attr:`encoder.native_type <asyncio_redis.encoders.BaseEncoder.native_type>`",
@@ -293,6 +333,10 @@ def _command(method):
                 StatusReply: ":class:`StatusReply <asyncio_redis.StatusReply>`",
                 ZRangeReply: ":class:`ZRangeReply <asyncio_redis.ZRangeReply>`",
                 ZScoreBoundary: ":class:`ZScoreBoundary <asyncio_redis.ZScoreBoundary>`",
+                Cursor: ":class:`Cursor <asyncio_redis.Cursor>`",
+                SetCursor: ":class:`SetCursor <asyncio_redis.SetCursor>`",
+                DictCursor: ":class:`DictCursor <asyncio_redis.DictCursor>`",
+                ZCursor: ":class:`ZCursor <asyncio_redis.ZCursor>`",
                 int: 'int',
                 bool: 'bool',
                 dict: 'dict',
@@ -338,7 +382,7 @@ class RedisProtocol(asyncio.Protocol):
     :param password: Redis database password
     :type password: bytes
     :param encoder: Encoder to use for encoding to or decoding from redis bytes to a native type.
-    :type encoder: :class:`asyncio_redis.encoders.BaseEncoder` subclass.
+    :type encoder: :class:`asyncio_redis.encoders.BaseEncoder` instance.
     :param db: Redis database
     :type db: int
     :param enable_typechecking: When ``True``, check argument types for all
@@ -350,10 +394,10 @@ class RedisProtocol(asyncio.Protocol):
         if encoder is None:
             encoder = UTF8Encoder()
 
-        assert not password or isinstance(password, bytes)
         assert isinstance(db, int)
         assert isinstance(encoder, BaseEncoder)
         assert encoder.native_type, 'Encoder.native_type not defined'
+        assert not password or isinstance(password, encoder.native_type)
 
         self.password = password
         self.db = db
@@ -412,10 +456,10 @@ class RedisProtocol(asyncio.Protocol):
         def initialize():
             # If a password or database was been given, first connect to that one.
             if self.password:
-                yield from self._auth(self.password)
+                yield from self.auth(self.password)
 
             if self.db:
-                yield from self._select(self.db)
+                yield from self.select(self.db)
 
             #  If we are in pubsub mode, send channel subscriptions again.
             if self._in_pubsub:
@@ -682,11 +726,15 @@ class RedisProtocol(asyncio.Protocol):
     # Internal
 
     @_command
-    def _auth(self, password:bytes) -> StatusReply:
-        return self._query(b'auth', password)
+    def auth(self, password:NativeType) -> StatusReply:
+        """ Authenticate to the server """
+        self.password = password
+        return self._query(b'auth', self.encode_from_native(password))
 
     @_command
-    def _select(self, db:int) -> StatusReply:
+    def select(self, db:int) -> StatusReply:
+        """ Change the selected database for the current connection """
+        self.db = db
         return self._query(b'select', self._encode_int(db))
 
     # Strings
@@ -1426,6 +1474,37 @@ class RedisProtocol(asyncio.Protocol):
         """ Determine the type stored at key """
         return self._query(b'type', self.encode_from_native(key))
 
+    @_command
+    def config_set(self, parameter:str, value:str) -> StatusReply:
+        """ Set a configuration parameter to the given value """
+        return self._query(b'config', b'set', self.encode_from_native(parameter),
+                        self.encode_from_native(value))
+
+    @_command
+    def config_get(self, parameter:str) -> ConfigPairReply:
+        """ Get the value of a configuration parameter """
+        return self._query(b'config', b'get', self.encode_from_native(parameter),
+                post_process_func=_PostProcessor.multibulk_as_configpair)
+
+    @_command
+    def config_rewrite(self) -> StatusReply:
+        """ Rewrite the configuration file with the in memory configuration """
+        return self._query(b'config', b'rewrite')
+
+    @_command
+    def config_resetstat(self) -> StatusReply:
+        """ Reset the stats returned by INFO """
+        return self._query(b'config', b'resetstat')
+
+    @_command
+    def info(self, section:(NativeType, NoneType)=None) -> InfoReply:
+        """ Get information and statistics about the server """
+        if section is None:
+            return self._query(b'info', post_process_func=_PostProcessor.bytes_to_info)
+        else:
+            return self._query(b'info', self.encode_from_native(section),
+                    post_process_func=_PostProcessor.bytes_to_info)
+
     # LUA scripting
 
     @_command
@@ -1502,6 +1581,63 @@ class RedisProtocol(asyncio.Protocol):
         """ Load script, returns sha1 """
         return self._query(b'script', b'load', script.encode('ascii'),
                     post_process_func=_PostProcessor.bytes_to_str)
+
+    # Scanning
+
+    @_command
+    @asyncio.coroutine
+    def scan(self, match:NativeType='*') -> Cursor:
+        """
+        Walk through the keys space.
+
+        ::
+
+            cursor = yield from protocol.scan(match='*')
+            while True:
+                item = cursor.fetchone()
+                if item is None:
+                    break
+                else:
+                    print(item)
+        """
+        def scanfunc(cursor):
+            return self._scan(cursor, match)
+
+        return Cursor(name='scan(match=%r)' % match, scanfunc=scanfunc)
+
+    def _scan(self, cursor, match):
+        return self._query(b'scan', self._encode_int(cursor),
+                    b'match', self.encode_from_native(match),
+                    post_process_func=_PostProcessor.multibulk_as_scanpart)
+
+    @_command
+    @asyncio.coroutine
+    def sscan(self, key:NativeType, match:NativeType='*') -> SetCursor:
+        """ Incrementally iterate set elements """
+        name = 'sscan(key=%r match=%r)' % (key, match)
+        return SetCursor(name=name, scanfunc=self._scan_key_func(b'sscan', key, match))
+
+    @_command
+    @asyncio.coroutine
+    def hscan(self, key:NativeType, match:NativeType='*') -> DictCursor:
+        """ Incrementally iterate hash fields and associated values """
+        name = 'hscan(key=%r match=%r)' % (key, match)
+        return DictCursor(name=name, scanfunc=self._scan_key_func(b'hscan', key, match))
+
+    @_command
+    @asyncio.coroutine
+    def zscan(self, key:NativeType, match:NativeType='*') -> DictCursor:
+        """ Incrementally iterate sorted sets elements and associated scores """
+        name = 'zscan(key=%r match=%r)' % (key, match)
+        return ZCursor(name=name, scanfunc=self._scan_key_func(b'zscan', key, match))
+
+    def _scan_key_func(self, verb:bytes, key:NativeType, match:NativeType):
+        def scan(cursor):
+            return self._query(verb, self.encode_from_native(key),
+                        self._encode_int(cursor),
+                        b'match', self.encode_from_native(match),
+                        post_process_func=_PostProcessor.multibulk_as_scanpart)
+        return scan
 
     # Transaction
 

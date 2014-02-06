@@ -75,8 +75,8 @@ Command replies
     :members:
 
 
-Command replies
----------------
+Cursors
+-------
 
 .. autoclass:: asyncio_redis.cursors.Cursor
     :members:

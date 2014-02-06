@@ -333,10 +333,10 @@ def _command(method):
                 StatusReply: ":class:`StatusReply <asyncio_redis.StatusReply>`",
                 ZRangeReply: ":class:`ZRangeReply <asyncio_redis.ZRangeReply>`",
                 ZScoreBoundary: ":class:`ZScoreBoundary <asyncio_redis.ZScoreBoundary>`",
-                Cursor: ":class:`Cursor <asyncio_redis.Cursor>`",
-                SetCursor: ":class:`SetCursor <asyncio_redis.SetCursor>`",
-                DictCursor: ":class:`DictCursor <asyncio_redis.DictCursor>`",
-                ZCursor: ":class:`ZCursor <asyncio_redis.ZCursor>`",
+                Cursor: ":class:`Cursor <asyncio_redis.cursors.Cursor>`",
+                SetCursor: ":class:`SetCursor <asyncio_redis.cursors.SetCursor>`",
+                DictCursor: ":class:`DictCursor <asyncio_redis.cursors.DictCursor>`",
+                ZCursor: ":class:`ZCursor <asyncio_redis.cursors.ZCursor>`",
                 int: 'int',
                 bool: 'bool',
                 dict: 'dict',
@@ -889,6 +889,8 @@ class RedisProtocol(asyncio.Protocol):
     def keys(self, pattern:NativeType) -> ListReply:
         """
         Find all keys matching the given pattern.
+
+        .. note:: Also take a look at :func:`~asyncio_redis.RedisProtocol.scan`.
         """
         return self._query(b'keys', self.encode_from_native(pattern),
                 post_process_func=_PostProcessor.multibulk_as_list)
@@ -1585,7 +1587,6 @@ class RedisProtocol(asyncio.Protocol):
     # Scanning
 
     @_command
-    @asyncio.coroutine
     def scan(self, match:NativeType='*') -> Cursor:
         """
         Walk through the keys space. You can either fetch the items one by one
@@ -1595,7 +1596,7 @@ class RedisProtocol(asyncio.Protocol):
 
             cursor = yield from protocol.scan(match='*')
             while True:
-                item = cursor.fetchone()
+                item = yield from cursor.fetchone()
                 if item is None:
                     break
                 else:
@@ -1605,7 +1606,18 @@ class RedisProtocol(asyncio.Protocol):
 
             cursor = yield from protocol.scan(match='*')
             items = yield from cursor.fetchall()
+
+        Also see: :func:`~asyncio_redis.RedisProtocol.sscan`,
+        :func:`~asyncio_redis.RedisProtocol.hscan` and
+        :func:`~asyncio_redis.RedisProtocol.zscan`
+
+        Redis reference: http://redis.io/commands/scan
         """
+        # (Make coroutine. @asyncio.coroutine breaks documentation. It uses
+        # @functools.wraps to make a generator for this function. But _command
+        # will no longer be able to read the signature.)
+        if False: yield
+
         def scanfunc(cursor):
             return self._scan(cursor, match)
 
@@ -1617,23 +1629,33 @@ class RedisProtocol(asyncio.Protocol):
                     post_process_func=_PostProcessor.multibulk_as_scanpart)
 
     @_command
-    @asyncio.coroutine
     def sscan(self, key:NativeType, match:NativeType='*') -> SetCursor:
-        """ Incrementally iterate set elements """
+        """
+        Incrementally iterate set elements
+
+        Also see: :func:`~asyncio_redis.RedisProtocol.scan`
+        """
+        if False: yield
         name = 'sscan(key=%r match=%r)' % (key, match)
         return SetCursor(name=name, scanfunc=self._scan_key_func(b'sscan', key, match))
 
     @_command
-    @asyncio.coroutine
     def hscan(self, key:NativeType, match:NativeType='*') -> DictCursor:
-        """ Incrementally iterate hash fields and associated values """
+        """
+        Incrementally iterate hash fields and associated values
+        Also see: :func:`~asyncio_redis.RedisProtocol.scan`
+        """
+        if False: yield
         name = 'hscan(key=%r match=%r)' % (key, match)
         return DictCursor(name=name, scanfunc=self._scan_key_func(b'hscan', key, match))
 
     @_command
-    @asyncio.coroutine
     def zscan(self, key:NativeType, match:NativeType='*') -> DictCursor:
-        """ Incrementally iterate sorted sets elements and associated scores """
+        """
+        Incrementally iterate sorted sets elements and associated scores
+        Also see: :func:`~asyncio_redis.RedisProtocol.scan`
+        """
+        if False: yield
         name = 'zscan(key=%r match=%r)' % (key, match)
         return ZCursor(name=name, scanfunc=self._scan_key_func(b'zscan', key, match))
 

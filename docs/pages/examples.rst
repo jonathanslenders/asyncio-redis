@@ -98,8 +98,8 @@ Pubsub
 
 By calling :func:`start_subscribe
 <asyncio_redis.RedisProtocol.start_subscribe>` (either on the protocol, through
-the :class:`Connection <asyncio.Connection>` class or through the :class:`Pool
-<asyncio.Pool>` class), you can start a pubsub listener.
+the :class:`Connection <asyncio_redis.Connection>` class or through the :class:`Pool
+<asyncio_redis.Pool>` class), you can start a pubsub listener.
 
 .. code:: python
 
@@ -185,6 +185,42 @@ connection, pool or protocol.
         yield from connection.set(b'my_key', b'my_value')
 
 
+Scanning for keys
+-----------------
+
+Redis has a few nice scanning utilities to discover keys in the database. They
+are rather low-level, but ``asyncio_redis`` exposes a simple
+:class:`~asyncio_redis.cursors.Cursor` class that allows you to iterate over
+all the keys matching a certain pattern. Each call of the
+:func:`~asyncio_redis.cursors.Cursor.fetchone` coroutine will return the next
+match. You don't have have to worry about accessing the server every x pages.
+
+The following example will print all the keys in the database:
+
+.. code:: python
+
+    import asyncio
+    import asyncio_redis
+
+    from asyncio_redis.encoders import BytesEncoder
+
+    @asyncio.coroutine
+    def example():
+        cursor = yield from protocol.scan(match='*')
+        while True:
+            item = yield from cursor.fetchone()
+            if item is None:
+                break
+            else:
+                print(item)
+
+
+See the scanning utilities: :func:`~asyncio_redis.RedisProtocol.scan`,
+:func:`~asyncio_redis.RedisProtocol.sscan`,
+:func:`~asyncio_redis.RedisProtocol.hscan` and
+:func:`~asyncio_redis.RedisProtocol.zscan`
+
+
 The :class:`RedisProtocol <asyncio_redis.RedisProtocol>` class
 --------------------------------------------------------------
 
@@ -218,5 +254,5 @@ it as follows:
 
 .. note:: It is not recommended to use the Protocol class directly, because the
           low-level Redis implementation could change. Prefer the
-          :class:`Connection <asyncio.Connection>` or :class:`Pool
-          <asyncio.Pool>` class as demonstrated below if possible.
+          :class:`Connection <asyncio_redis.Connection>` or :class:`Pool
+          <asyncio_redis.Pool>` class as demonstrated above if possible.

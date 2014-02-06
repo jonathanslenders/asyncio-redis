@@ -35,9 +35,12 @@ View documentation at `read-the-docs`_
 The connection class
 --------------------
 
-The ``asyncio_redis.Connection`` class will take care of your connection and
-will automatically reconnect, using a new transport, when the connection
-drops.
+A ``asyncio_redis.Connection`` instance will take care of the connection and
+will automatically reconnect, using a new transport when the connection drops.
+This connection class also acts as a proxy to a ``asyncio_redis.RedisProtocol``
+instance; any Redis command of the protocol can be called directly at the
+connection.
+
 
 .. code:: python
 

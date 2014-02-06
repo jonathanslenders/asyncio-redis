@@ -37,7 +37,7 @@ class Pool:
         :param db: Redis database
         :type db: int
         :param encoder: Encoder to use for encoding to or decoding from redis bytes to a native type.
-        :type encoder: :class:`asyncio_redis.encoders.BaseEncoder` subclass.
+        :type encoder: :class:`asyncio_redis.encoders.BaseEncoder` instance.
         :param poolsize: The number of parallel connections.
         :type poolsize: int
         :param auto_reconnect: Enable auto reconnect

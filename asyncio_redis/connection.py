@@ -31,7 +31,7 @@ class Connection:
         :param db: Redis database
         :type db: int
         :param encoder: Encoder to use for encoding to or decoding from redis bytes to a native type.
-        :type encoder: :class:`asyncio_redis.encoders.BaseEncoder` subclass.
+        :type encoder: :class:`asyncio_redis.encoders.BaseEncoder` instance.
         :param auto_reconnect: Enable auto reconnect
         :type auto_reconnect: bool
         :param loop: (optional) asyncio event loop.
@@ -91,7 +91,7 @@ class Connection:
                 logger.log(logging.INFO, 'Connecting to redis failed. Retrying in %i seconds' % interval)
                 yield from asyncio.sleep(interval)
 
-    def __getattr__(self, name): # Don't proxy everything, (no private vars, and use decorator to mark exceptions)
+    def __getattr__(self, name):
         # Only proxy commands.
         if name not in _all_commands:
             raise AttributeError

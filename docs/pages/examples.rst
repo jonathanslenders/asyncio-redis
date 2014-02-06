@@ -6,9 +6,11 @@ Examples
 The :class:`Connection <asyncio_redis.Connection>` class
 --------------------------------------------------------
 
-The :class:`Connection <asyncio_redis.Connection>` class will take care of your
-connection and will automatically reconnect, using a new transport, when the
-connection drops.
+A :class:`Connection <asyncio_redis.Connection>` instance will take care of the
+connection and will automatically reconnect, using a new transport when the
+connection drops. This connection class also acts as a proxy to at 
+:class:`RedisProtocol <asyncio_redis.RedisProtocol>` instance; any Redis
+command of the protocol can be called directly at the connection.
 
 .. code:: python
 

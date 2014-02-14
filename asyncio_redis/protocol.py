@@ -109,7 +109,13 @@ class MultiBulkReply:
                 raise AssertionError('Invalid type: %r' % type(result))
 
         for f in self.iter_raw():
-            yield auto_decode(f)
+            # We should immediately wrap this coroutine in async(), to be sure
+            # that the order of the queue remains, even if we wrap it in
+            # gather:
+            #    f1 = next(multibulk)
+            #    f2 = next(multibulk)
+            #    r1, r2 = gather(f1, f2)
+            yield asyncio.async(auto_decode(f))
 
     def __repr__(self):
         return 'MultiBulkReply(protocol=%r, count=%r)' % (self.protocol, self.count)

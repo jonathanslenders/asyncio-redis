@@ -72,6 +72,8 @@ class ZAggregate: # TODO: use the Python 3.4 enum type.
 
 class PipelinedCall:
     """ Track record for call that is being executed in a protocol. """
+    __slots__ = ('cmd', 'is_blocking')
+
     def __init__(self, cmd, is_blocking):
         self.cmd = cmd
         self.is_blocking = is_blocking

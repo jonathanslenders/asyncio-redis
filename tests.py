@@ -158,10 +158,10 @@ class RedisProtocolTest(unittest.TestCase):
         # mget
         yield from protocol.set(u'my_key', u'a')
         yield from protocol.set(u'my_key2', u'b')
-        result = yield from protocol.mget([ u'my_key', u'my_key2' ])
+        result = yield from protocol.mget([ u'my_key', u'my_key2', u'not_exists'])
         self.assertIsInstance(result, ListReply)
         result = yield from result.get_as_list()
-        self.assertEqual(result, [u'a', u'b'])
+        self.assertEqual(result, [u'a', u'b', None])
 
     @redis_test
     def test_strlen(self, transport, protocol):

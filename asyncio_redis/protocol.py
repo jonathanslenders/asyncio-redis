@@ -430,9 +430,6 @@ class RedisProtocol(asyncio.Protocol):
         self._pubsub_channels = set() # Set of channels
         self._pubsub_patterns = set() # Set of patterns
 
-        # Pipelined calls
-        self._pipelined_calls = set() # Set of all the pipelined calls.
-
         # Transaction related stuff.
         self._in_transaction = False
         self._transaction = None
@@ -450,6 +447,9 @@ class RedisProtocol(asyncio.Protocol):
         self.transport = transport
         self._is_connected = True
         logger.log(logging.INFO, 'Redis connection made')
+
+        # Pipelined calls
+        self._pipelined_calls = set() # Set of all the pipelined calls.
 
         # Start parsing reader stream.
         self._reader = StreamReader()

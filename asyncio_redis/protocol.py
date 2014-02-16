@@ -13,9 +13,11 @@ from collections import deque
 from functools import wraps
 from inspect import getfullargspec, formatargspec, getcallargs
 
-from .exceptions import Error, ErrorReply, TransactionError, NotConnectedError, ConnectionLostError, NoRunningScriptError, ScriptKilledError
 from .encoders import BaseEncoder, UTF8Encoder
-from .replies import * # XXX: no star import!!!!
+from .exceptions import Error, ErrorReply, TransactionError, NotConnectedError, ConnectionLostError, NoRunningScriptError, ScriptKilledError
+from .replies import BlockingPopReply, DictReply, ListReply, PubSubReply, SetReply, StatusReply, ZRangeReply, ConfigPairReply, InfoReply
+
+
 from .cursors import Cursor, SetCursor, DictCursor, ZCursor
 
 __all__ = (

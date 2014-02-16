@@ -424,12 +424,6 @@ class RedisProtocol(asyncio.Protocol):
         self._messages_queue = None # Pubsub queue
         self._is_connected = False # True as long as the underlying transport is connected.
 
-        # Input parser state
-        self._buffer = b''
-        self._in_bulk_reply = False
-        self._bulk_reply_len = 0
-        self._bulk_reply_buffer = b''
-
         # Pubsub state
         self._in_pubsub = False
         self._subscription = None

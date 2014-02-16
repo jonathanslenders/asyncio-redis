@@ -105,6 +105,8 @@ class MultiBulkReply:
                 return result
             elif isinstance(result, bytes):
                 return self.protocol.decode_to_native(result)
+            elif result is None:
+                return result
             else:
                 raise AssertionError('Invalid type: %r' % type(result))
 

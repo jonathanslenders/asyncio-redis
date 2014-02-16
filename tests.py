@@ -6,29 +6,31 @@ from asyncio.protocols import SubprocessProtocol
 from asyncio.tasks import gather
 
 from asyncio_redis import (
-        BlockingPopReply,
-        ConfigPairReply,
         Connection,
-        DictReply,
         Error,
         ErrorReply,
-        InfoReply,
-        ListReply,
         NoAvailableConnectionsInPoolError,
         NoRunningScriptError,
         NotConnectedError,
         Pool,
-        PubSubReply,
         RedisProtocol,
         Script,
         ScriptKilledError,
-        SetReply,
-        StatusReply,
         Subscription,
         Transaction,
         TransactionError,
-        ZRangeReply,
         ZScoreBoundary,
+)
+from asyncio_redis.replies import (
+        BlockingPopReply,
+        ConfigPairReply,
+        DictReply,
+        InfoReply,
+        ListReply,
+        PubSubReply,
+        SetReply,
+        StatusReply,
+        ZRangeReply,
 )
 from asyncio_redis.cursors import Cursor, SetCursor, DictCursor, ZCursor
 from asyncio_redis.encoders import BytesEncoder, UTF8Encoder

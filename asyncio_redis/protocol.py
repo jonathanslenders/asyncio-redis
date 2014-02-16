@@ -99,7 +99,7 @@ class MultiBulkReply:
     def __iter__(self):
         """
         Iterate over the reply. This yields coroutines of the decoded packets.
-        It decode bytes automatically using protocol.decode_to_native.
+        It decodes bytes automatically using protocol.decode_to_native.
         """
         @asyncio.coroutine
         def auto_decode(f):

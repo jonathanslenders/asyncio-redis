@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import traceback
 import asyncio
 import signal
 import logging
@@ -479,6 +480,7 @@ class RedisProtocol(asyncio.Protocol):
 
     def data_received(self, data):
         """ Process data received from Redis server.  """
+        logger.info("Feeding data: |%r|" % data)
         self._reader.feed_data(data)
 
     def _encode_int(self, value:int) -> bytes:
@@ -506,6 +508,7 @@ class RedisProtocol(asyncio.Protocol):
         if exc is None:
             self._reader.feed_eof()
         else:
+            logger.info("Connection lost with exec: %s" % exc)
             self._reader.set_exception(exc)
 
         if self._reader_f:
@@ -580,6 +583,8 @@ class RedisProtocol(asyncio.Protocol):
         c = yield from self._reader.read(1)
         if c:
             yield from self._line_received_handlers[c](cb)
+        else:
+            logger.error("No data: %s" % traceback.format_stack())
 
     @asyncio.coroutine
     def _handle_status_reply(self, cb):

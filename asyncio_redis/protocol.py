@@ -480,7 +480,6 @@ class RedisProtocol(asyncio.Protocol):
 
     def data_received(self, data):
         """ Process data received from Redis server.  """
-        logger.info("Feeding data: |%r|" % data)
         self._reader.feed_data(data)
 
     def _encode_int(self, value:int) -> bytes:

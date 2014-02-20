@@ -584,7 +584,7 @@ class RedisProtocol(asyncio.Protocol):
         if c:
             yield from self._line_received_handlers[c](cb)
         else:
-            logger.error("No data: %s" % traceback.format_stack())
+            raise ConnectionLostError(None)
 
     @asyncio.coroutine
     def _handle_status_reply(self, cb):

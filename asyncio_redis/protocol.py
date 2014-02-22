@@ -242,25 +242,42 @@ class NativeType:
 # List of all command methods.
 _all_commands = []
 
-def _command(method):
+class CommandCreator:
     """
+    Utility for creating a wrapper for each Redis command of the Protocol.
     Wrapper for all redis commands.
     This will also keep track of all the available commands and do type
     checking.
     """
-    # Register command.
-    _all_commands.append(method.__name__)
+    def __init__(self, method):
+        self.method = method
 
-    # Read specs
-    specs = getfullargspec(method)
-    return_type = specs.annotations.get('return', None)
-    params = { k:v for k, v in specs.annotations.items() if k != 'return' }
+        # Register command.
+        _all_commands.append(method.__name__)
 
-    def get_real_type(protocol, type_):
+    @property
+    def specs(self):
+       """ Argspecs """
+       return getfullargspec(self.method)
+
+    @property
+    def return_type(self):
+        return self.specs.annotations.get('return', None)
+
+    @property
+    def params(self):
+        return { k:v for k, v in self.specs.annotations.items() if k != 'return' }
+
+    @classmethod
+    def get_real_type(cls, protocol, type_):
+        """
+        Given a protocol instance, and type annotation, return something that
+        we can pass to isinstance for the typechecking.
+        """
         # If NativeType was given, replace it with the type of the protocol
         # itself.
         if isinstance(type_, tuple):
-            return tuple(get_real_type(protocol, t) for t in type_)
+            return tuple(cls.get_real_type(protocol, t) for t in type_)
 
         if type_ == NativeType:
             return protocol.native_type
@@ -269,120 +286,192 @@ def _command(method):
         else:
             return type_
 
-    def typecheck_input(protocol, *a, **kw):
-        if protocol.enable_typechecking and params:
-            for name, value in getcallargs(method, None, *a, **kw).items():
-                if name in params:
-                    real_type = get_real_type(protocol, params[name])
-                    if not isinstance(value, real_type):
-                        raise TypeError('RedisProtocol.%s received %r, expected %r' %
-                                        (method.__name__, type(value).__name__, real_type))
+    def create_input_typechecker(self):
+        params = self.params
 
-    def typecheck_return(protocol, result):
-        if protocol.enable_typechecking and return_type:
-            expected_type = get_real_type(protocol, return_type)
-            if not isinstance(result, expected_type):
-                raise TypeError('Got unexpected return type %r in RedisProtocol.%s, expected %r' %
-                                (type(result).__name__, method.__name__, expected_type))
-
-    # Wrap it into a check which allows this command to be run either directly
-    # on the protocol, outside of transactions or from the transaction object.
-    @wraps(method)
-    def wrapper(self, *a, **kw):
-        if not self._is_connected:
-            raise NotConnectedError
-
-        # When calling from a transaction, the first arg is the transaction object.
-        if self.in_transaction and (len(a) == 0 or a[0] != self._transaction):
-            raise Error('Cannot run command inside transaction')
-        elif self.in_transaction:
-            # In case of a transaction, we receive a Future
-            typecheck_input(self, *a[1:], **kw)
-            future = yield from method(self, *a[1:], **kw)
-
-            # Typecheck the future when the result is available.
-            @future.add_done_callback
-            def callback(result):
-                typecheck_return(self, result.result())
-
-            return future
-        # When calling from a pubsub context
-        elif self.in_pubsub and (len(a) == 0 or a[0] != self._subscription):
-            raise Error('Cannot run command inside pubsub subscription.')
-        elif self.in_pubsub:
-            typecheck_input(self, *a[1:], **kw)
-            result = yield from method(self, *a[1:], **kw)
-            typecheck_return(self, result)
-            return result
+        if params:
+            def typecheck_input(protocol, *a, **kw):
+                """
+                Given a protocol instance and *a/**kw of this method, raise TypeError
+                when the signature doesn't match.
+                """
+                if protocol.enable_typechecking:
+                    for name, value in getcallargs(self.method, None, *a, **kw).items():
+                        if name in params:
+                            real_type = self.get_real_type(protocol, params[name])
+                            if not isinstance(value, real_type):
+                                raise TypeError('RedisProtocol.%s received %r, expected %r' %
+                                                (self.method.__name__, type(value).__name__, real_type))
         else:
-            typecheck_input(self, *a, **kw)
-            result = yield from method(self, *a, **kw)
-            typecheck_return(self, result)
-            return result
+            def typecheck_input(protocol, *a, **kw):
+                pass
 
-    # Append the real signature as the first line in the docstring.
-    # (This will make the sphinx docs show the real signature instead of
-    # (*a, **kw) of the wrapper.)
-    # (But don't put the anotations inside the copied signature, that's rather
-    # ugly in the docs.)
-    signature = formatargspec(* specs[:6])
+        return typecheck_input
 
-    # Use function annotations to generate param documentation.
+    def create_return_typechecker(self):
+        return_type = self.return_type
 
-    def get_name(type_):
-        """ Turn type annotation into doc string. """
-        try:
-            return {
-                BlockingPopReply: ":class:`BlockingPopReply <asyncio_redis.BlockingPopReply>`",
-                ConfigPairReply: ":class:`ConfigPairReply <asyncio_redis.ConfigPairReply>`",
-                DictReply: ":class:`DictReply <asyncio_redis.DictReply>`",
-                InfoReply: ":class:`InfoReply <asyncio_redis.InfoReply>`",
-                ListReply: ":class:`ListReply <asyncio_redis.ListReply>`",
-                MultiBulkReply: ":class:`MultiBulkReply <asyncio_redis.MultiBulkReply>`",
-                NativeType: "Native Python type, as defined by :attr:`encoder.native_type <asyncio_redis.encoders.BaseEncoder.native_type>`",
-                NoneType: "None",
-                SetReply: ":class:`SetReply <asyncio_redis.SetReply>`",
-                StatusReply: ":class:`StatusReply <asyncio_redis.StatusReply>`",
-                ZRangeReply: ":class:`ZRangeReply <asyncio_redis.ZRangeReply>`",
-                ZScoreBoundary: ":class:`ZScoreBoundary <asyncio_redis.ZScoreBoundary>`",
-                Cursor: ":class:`Cursor <asyncio_redis.cursors.Cursor>`",
-                SetCursor: ":class:`SetCursor <asyncio_redis.cursors.SetCursor>`",
-                DictCursor: ":class:`DictCursor <asyncio_redis.cursors.DictCursor>`",
-                ZCursor: ":class:`ZCursor <asyncio_redis.cursors.ZCursor>`",
-                int: 'int',
-                bool: 'bool',
-                dict: 'dict',
-                float: 'float',
-                str: 'str',
-                bytes: 'bytes',
-            }[type_]
-        except KeyError:
-            if isinstance(type_, ListOf):
-                return "List or iterable of %s" % get_name(type_.type)
+        if return_type:
+            def typecheck_return(protocol, result):
+                """
+                Given protocol and result value. Raise TypeError if the result is of the wrong type.
+                """
+                if protocol.enable_typechecking:
+                    expected_type = self.get_real_type(protocol, return_type)
+                    if not isinstance(result, expected_type):
+                        raise TypeError('Got unexpected return type %r in RedisProtocol.%s, expected %r' %
+                                        (type(result).__name__, method.__name__, expected_type))
+        else:
+            def typecheck_return(protocol, result):
+                pass
 
-            elif isinstance(type_, tuple):
-                return ' or '.join(get_name(t) for t in type_)
+        return typecheck_return
+
+    def get_docstring(self):
+        # Append the real signature as the first line in the docstring.
+        # (This will make the sphinx docs show the real signature instead of
+        # (*a, **kw) of the wrapper.)
+        # (But don't put the anotations inside the copied signature, that's rather
+        # ugly in the docs.)
+        signature = formatargspec(* self.specs[:6])
+
+        # Use function annotations to generate param documentation.
+
+        def get_name(type_):
+            """ Turn type annotation into doc string. """
+            try:
+                return {
+                    BlockingPopReply: ":class:`BlockingPopReply <asyncio_redis.BlockingPopReply>`",
+                    ConfigPairReply: ":class:`ConfigPairReply <asyncio_redis.ConfigPairReply>`",
+                    DictReply: ":class:`DictReply <asyncio_redis.DictReply>`",
+                    InfoReply: ":class:`InfoReply <asyncio_redis.InfoReply>`",
+                    ListReply: ":class:`ListReply <asyncio_redis.ListReply>`",
+                    MultiBulkReply: ":class:`MultiBulkReply <asyncio_redis.MultiBulkReply>`",
+                    NativeType: "Native Python type, as defined by :attr:`encoder.native_type <asyncio_redis.encoders.BaseEncoder.native_type>`",
+                    NoneType: "None",
+                    SetReply: ":class:`SetReply <asyncio_redis.SetReply>`",
+                    StatusReply: ":class:`StatusReply <asyncio_redis.StatusReply>`",
+                    ZRangeReply: ":class:`ZRangeReply <asyncio_redis.ZRangeReply>`",
+                    ZScoreBoundary: ":class:`ZScoreBoundary <asyncio_redis.ZScoreBoundary>`",
+                    Cursor: ":class:`Cursor <asyncio_redis.cursors.Cursor>`",
+                    SetCursor: ":class:`SetCursor <asyncio_redis.cursors.SetCursor>`",
+                    DictCursor: ":class:`DictCursor <asyncio_redis.cursors.DictCursor>`",
+                    ZCursor: ":class:`ZCursor <asyncio_redis.cursors.ZCursor>`",
+                    int: 'int',
+                    bool: 'bool',
+                    dict: 'dict',
+                    float: 'float',
+                    str: 'str',
+                    bytes: 'bytes',
+                }[type_]
+            except KeyError:
+                if isinstance(type_, ListOf):
+                    return "List or iterable of %s" % get_name(type_.type)
+
+                elif isinstance(type_, tuple):
+                    return ' or '.join(get_name(t) for t in type_)
+                else:
+                    raise Exception('Unknown annotation %s' % type_.__name__)
+                    #return "``%s``" % type_.__name__
+
+        def get_param(k, v):
+            return ':param %s: %s\n' % (k, get_name(v))
+
+        params_str = [ get_param(k, v) for k, v in self.params.items() ]
+        returns = ':returns: (Future of) %s\n' % get_name(self.return_type) if self.return_type else ''
+
+        return '%s%s\n%s\n\n%s%s' % (
+                self.method.__name__, signature,
+                self.method.__doc__,
+                ''.join(params_str),
+                returns
+                )
+
+    def get_wrapped_method(self):
+        """
+        Return the wrapped method for use in the `RedisProtocol` class.
+        """
+        typecheck_return = self.create_return_typechecker()
+        typecheck_input = self.create_input_typechecker()
+        method = self.method
+
+        # Wrap it into a check which allows this command to be run either
+        # directly on the protocol, outside of transactions or from the
+        # transaction object.
+        @wraps(method)
+        def wrapper(protocol_self, *a, **kw):
+            # When calling from a transaction
+            if protocol_self.in_transaction:
+                # The first arg should be the transaction # object.
+                if not a or a[0] != protocol_self._transaction:
+                    raise Error('Cannot run command inside transaction')
+
+                # In case of a transaction, we receive a Future from the command.
+                else:
+                    typecheck_input(protocol_self, *a[1:], **kw)
+                    future = yield from method(protocol_self, *a[1:], **kw)
+                    future2 = Future()
+
+                    # Typecheck the future when the result is available.
+                    @future.add_done_callback
+                    def callback(f):
+                        result = f.result()
+                        typecheck_return(protocol_self, result)
+                        future2.set_result(result)
+
+                    return future2
+
+            # When calling from a pubsub context
+            elif protocol_self.in_pubsub:
+                if not a or a[0] != protocol_self._subscription:
+                    raise Error('Cannot run command inside pubsub subscription.')
+
+                else:
+                    typecheck_input(protocol_self, *a[1:], **kw)
+                    result = yield from method(protocol_self, *a[1:], **kw)
+                    typecheck_return(protocol_self, result)
+                    return (result)
+
             else:
-                raise Exception('Unknown annotation %s' % type_.__name__)
-                #return "``%s``" % type_.__name__
+                typecheck_input(protocol_self, *a, **kw)
+                result = yield from method(protocol_self, *a, **kw)
+                typecheck_return(protocol_self, result)
+                return (result)
 
-    def get_param(k, v):
-        return ':param %s: %s\n' % (k, get_name(v))
-
-    params_str = [ get_param(k, v) for k, v in params.items() ]
-    returns = ':returns: (Future of) %s\n' % get_name(return_type) if return_type else ''
-
-    wrapper.__doc__ = '%s%s\n%s\n\n%s%s' % (
-            method.__name__, signature,
-            method.__doc__,
-            ''.join(params_str),
-            returns
-            )
-
-    return wrapper
+        wrapper.__doc__ = self.get_docstring()
+        return wrapper
 
 
-class RedisProtocol(asyncio.Protocol):
+class _command:
+    """
+    Simple wrapper for marking commands in `RedisProtocol`.
+    """
+    def __init__(self, method):
+        self.method = method
+
+
+class _RedisProtocolMeta(type):
+    """
+    Metaclass for `RedisProtocol` which applies the _command decorator.
+    """
+    @classmethod
+    def __prepare__(metacls, name, bases):
+        class _member_table(dict):
+            def __setitem__(self, name, value):
+                if isinstance(value, _command):
+                    creator = CommandCreator(value.method)
+                    value = creator.get_wrapped_method()
+
+                super().__setitem__(name, value)
+
+        return _member_table()
+
+    def __new__(cls, name, bases, attrs):
+        return type.__new__(cls, name, bases, dict(attrs))
+
+
+
+class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     """
     The Redis Protocol implementation.
 
@@ -715,6 +804,9 @@ class RedisProtocol(asyncio.Protocol):
     @asyncio.coroutine
     def _query(self, *args, _bypass=False, post_process_func=None, set_blocking=False):
         """ Wrapper around both _send_command and _get_answer. """
+        if not self._is_connected:
+            raise NotConnectedError
+
         call = PipelinedCall(args[0], set_blocking)
         self._pipelined_calls.add(call)
 

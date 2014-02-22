@@ -48,25 +48,25 @@ Connection pool
 Command replies
 ---------------
 
-.. autoclass:: asyncio_redis.StatusReply
+.. autoclass:: asyncio_redis.replies.StatusReply
     :members:
 
-.. autoclass:: asyncio_redis.DictReply
+.. autoclass:: asyncio_redis.replies.DictReply
     :members:
 
-.. autoclass:: asyncio_redis.ListReply
+.. autoclass:: asyncio_redis.replies.ListReply
     :members:
 
-.. autoclass:: asyncio_redis.SetReply
+.. autoclass:: asyncio_redis.replies.SetReply
     :members:
 
-.. autoclass:: asyncio_redis.ZRangeReply
+.. autoclass:: asyncio_redis.replies.ZRangeReply
     :members:
 
-.. autoclass:: asyncio_redis.PubSubReply
+.. autoclass:: asyncio_redis.replies.PubSubReply
     :members:
 
-.. autoclass:: asyncio_redis.BlockingPopReply
+.. autoclass:: asyncio_redis.replies.BlockingPopReply
     :members:
 
 

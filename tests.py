@@ -1177,7 +1177,7 @@ class RedisProtocolTest(unittest.TestCase):
         # Running commands directly on protocol should fail.
         with self.assertRaises(Error) as e:
             yield from protocol.set('a', 'b')
-        self.assertEqual(e.exception.args[0], 'Cannot run command inside transaction')
+        self.assertEqual(e.exception.args[0], 'Cannot run command inside transaction (use the Transaction object instead)')
 
         # Calling subscribe inside transaction should fail.
         with self.assertRaises(Error) as e:
@@ -1405,6 +1405,61 @@ class RedisProtocolTest(unittest.TestCase):
         received2 = yield from cursor.fetchall()
         self.assertIsInstance(received2, dict)
         self.assertEqual(received, received2)
+
+    @redis_test
+    def test_alternate_gets(self, transport, protocol):
+        """
+        Test _asdict/_asset/_aslist suffixes.
+        """
+        # Prepare
+        yield from protocol.set(u'my_key', u'a')
+        yield from protocol.set(u'my_key2', u'b')
+
+        yield from protocol.delete([ u'my_set' ])
+        yield from protocol.sadd(u'my_set', [u'value1'])
+        yield from protocol.sadd(u'my_set', [u'value2'])
+
+        yield from protocol.delete([ u'my_hash' ])
+        yield from protocol.hmset(u'my_hash', {'a':'1', 'b':'2', 'c':'3'})
+
+        # Test mget_aslist
+        result = yield from protocol.mget_aslist(['my_key', 'my_key2'])
+        self.assertEqual(result, [u'a', u'b'])
+        self.assertIsInstance(result, list)
+
+        # Test keys_aslist
+        result = yield from protocol.keys_aslist('some-prefix-')
+        self.assertIsInstance(result, list)
+
+        # Test smembers
+        result = yield from protocol.smembers_asset(u'my_set')
+        self.assertEqual(result, { u'value1', u'value2' })
+        self.assertIsInstance(result, set)
+
+        # Test hgetall_asdict
+        result = yield from protocol.hgetall_asdict('my_hash')
+        self.assertEqual(result, {'a':'1', 'b':'2', 'c':'3'})
+        self.assertIsInstance(result, dict)
+
+        # test all inside a transaction.
+        transaction = yield from protocol.multi()
+        f1 = yield from transaction.mget_aslist(['my_key', 'my_key2'])
+        f2 = yield from transaction.smembers_asset(u'my_set')
+        f3 = yield from transaction.hgetall_asdict('my_hash')
+        yield from transaction.exec()
+
+        result1 = yield from f1
+        result2 = yield from f2
+        result3 = yield from f3
+
+        self.assertEqual(result1, [u'a', u'b'])
+        self.assertIsInstance(result1, list)
+
+        self.assertEqual(result2, { u'value1', u'value2' })
+        self.assertIsInstance(result2, set)
+
+        self.assertEqual(result3, {'a':'1', 'b':'2', 'c':'3'})
+        self.assertIsInstance(result3, dict)
 
 
 class RedisBytesProtocolTest(unittest.TestCase):

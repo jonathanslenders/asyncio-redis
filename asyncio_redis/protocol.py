@@ -417,7 +417,7 @@ class CommandCreator:
 
         return typecheck_return
 
-    def get_docstring(self, return_type):
+    def _get_docstring(self, suffix, return_type):
         # Append the real signature as the first line in the docstring.
         # (This will make the sphinx docs show the real signature instead of
         # (*a, **kw) of the wrapper.)
@@ -459,6 +459,7 @@ class CommandCreator:
                     set: 'set',
                     dict: 'dict',
 
+                    # XXX: Because of circulare references, we cannot use the real types here.
                     'Transaction': ":class:`asyncio_redis.Transaction`",
                     'Subscription': ":class:`asyncio_redis.Subscription`",
                 }[type_]
@@ -479,7 +480,7 @@ class CommandCreator:
         returns = ':returns: (Future of) %s\n' % get_name(return_type) if return_type else ''
 
         return '%s%s\n%s\n\n%s%s' % (
-                self.method.__name__, signature,
+                self.method.__name__ + suffix, signature,
                 self.method.__doc__,
                 ''.join(params_str),
                 returns
@@ -489,9 +490,9 @@ class CommandCreator:
         """
         Return all the methods to be used in the RedisProtocol class.
         """
-        return [ ('', self._get_wrapped_method(None, self.return_type)) ]
+        return [ ('', self._get_wrapped_method(None, '', self.return_type)) ]
 
-    def _get_wrapped_method(self, post_process, return_type):
+    def _get_wrapped_method(self, post_process, suffix, return_type):
         """
         Return the wrapped method for use in the `RedisProtocol` class.
         """
@@ -550,7 +551,7 @@ class CommandCreator:
                 typecheck_return(protocol_self, result)
                 return (result)
 
-        wrapper.__doc__ = self.get_docstring(return_type)
+        wrapper.__doc__ = self._get_docstring(suffix, return_type)
         return wrapper
 
 
@@ -571,7 +572,7 @@ class QueryCommandCreator(CommandCreator):
         result = []
 
         for suffix, return_type, post_processor in all_post_processors:
-            result.append( (suffix, self._get_wrapped_method(post_processor, return_type)) )
+            result.append( (suffix, self._get_wrapped_method(post_processor, suffix, return_type)) )
 
         return result
 
@@ -606,14 +607,14 @@ class _RedisProtocolMeta(type):
     Metaclass for `RedisProtocol` which applies the _command decorator.
     """
     def __new__(cls, name, bases, attrs):
-        for name, value in dict(attrs).items():
+        for attr_name, value in dict(attrs).items():
             if isinstance(value, _command):
                 creator = value.creator(value.method)
                 for suffix, method in creator.get_methods():
-                    attrs[name + suffix] =  method
+                    attrs[attr_name + suffix] =  method
 
                     # Register command.
-                    _all_commands.append(name + suffix)
+                    _all_commands.append(attr_name + suffix)
 
         return type.__new__(cls, name, bases, attrs)
 

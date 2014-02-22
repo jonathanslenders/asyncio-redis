@@ -357,6 +357,7 @@ class CommandCreator:
                     SetCursor: ":class:`SetCursor <asyncio_redis.cursors.SetCursor>`",
                     DictCursor: ":class:`DictCursor <asyncio_redis.cursors.DictCursor>`",
                     ZCursor: ":class:`ZCursor <asyncio_redis.cursors.ZCursor>`",
+                    _ScanPart: ":class:`_ScanPart",
                     int: 'int',
                     bool: 'bool',
                     dict: 'dict',
@@ -1684,7 +1685,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     # Scanning
 
-    @_command
+#    @_command
     def scan(self, match:NativeType='*') -> Cursor:
         """
         Walk through the keys space. You can either fetch the items one by one
@@ -1721,12 +1722,13 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
         return Cursor(name='scan(match=%r)' % match, scanfunc=scanfunc)
 
-    def _scan(self, cursor, match):
+    @_command
+    def _scan(self, cursor:int, match:NativeType) -> _ScanPart:
         return self._query(b'scan', self._encode_int(cursor),
                     b'match', self.encode_from_native(match),
                     post_process_func=_PostProcessor.multibulk_as_scanpart)
 
-    @_command
+#    @_command
     def sscan(self, key:NativeType, match:NativeType='*') -> SetCursor:
         """
         Incrementally iterate set elements
@@ -1735,9 +1737,13 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         """
         if False: yield
         name = 'sscan(key=%r match=%r)' % (key, match)
-        return SetCursor(name=name, scanfunc=self._scan_key_func(b'sscan', key, match))
 
-    @_command
+        def scan(cursor):
+            return self._do_scan(b'sscan', key, cursor, match)
+
+        return SetCursor(name=name, scanfunc=scan)
+
+#    @_command
     def hscan(self, key:NativeType, match:NativeType='*') -> DictCursor:
         """
         Incrementally iterate hash fields and associated values
@@ -1745,9 +1751,13 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         """
         if False: yield
         name = 'hscan(key=%r match=%r)' % (key, match)
-        return DictCursor(name=name, scanfunc=self._scan_key_func(b'hscan', key, match))
 
-    @_command
+        def scan(cursor):
+            return self._do_scan(b'hscan', key, cursor, match)
+
+        return DictCursor(name=name, scanfunc=scan)
+
+#    @_command
     def zscan(self, key:NativeType, match:NativeType='*') -> DictCursor:
         """
         Incrementally iterate sorted sets elements and associated scores
@@ -1755,15 +1765,18 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         """
         if False: yield
         name = 'zscan(key=%r match=%r)' % (key, match)
-        return ZCursor(name=name, scanfunc=self._scan_key_func(b'zscan', key, match))
 
-    def _scan_key_func(self, verb:bytes, key:NativeType, match:NativeType):
         def scan(cursor):
-            return self._query(verb, self.encode_from_native(key),
-                        self._encode_int(cursor),
-                        b'match', self.encode_from_native(match),
-                        post_process_func=_PostProcessor.multibulk_as_scanpart)
-        return scan
+            return self._do_scan(b'zscan', key, cursor, match)
+
+        return ZCursor(name=name, scanfunc=scan)
+
+    @_command
+    def _do_scan(self, verb:bytes, key:NativeType, cursor:int, match:NativeType) -> _ScanPart:
+        return self._query(verb, self.encode_from_native(key),
+                self._encode_int(cursor),
+                b'match', self.encode_from_native(match),
+                post_process_func=_PostProcessor.multibulk_as_scanpart)
 
     # Transaction
 

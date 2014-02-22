@@ -14,6 +14,7 @@ The Protocol
 .. autoclass:: asyncio_redis.RedisProtocol
     :members:
     :undoc-members:
+    :inherited-members:
     :exclude-members: data_received, eof_received, connection_lost
 
 .. autoclass:: asyncio_redis.RedisBytesProtocol

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import traceback
 import asyncio
 import signal
 import logging
@@ -743,6 +744,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         if exc is None:
             self._reader.feed_eof()
         else:
+            logger.info("Connection lost with exec: %s" % exc)
             self._reader.set_exception(exc)
 
         if self._reader_f:
@@ -815,7 +817,10 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     @asyncio.coroutine
     def _handle_item(self, cb):
         c = yield from self._reader.read(1)
-        yield from self._line_received_handlers[c](cb)
+        if c:
+            yield from self._line_received_handlers[c](cb)
+        else:
+            raise ConnectionLostError(None)
 
     @asyncio.coroutine
     def _handle_status_reply(self, cb):

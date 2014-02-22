@@ -17,8 +17,6 @@ The Protocol
     :inherited-members:
     :exclude-members: data_received, eof_received, connection_lost
 
-.. autoclass:: asyncio_redis.RedisBytesProtocol
-
 
 Encoders
 ----------
@@ -41,15 +39,11 @@ Connection
     :members:
     :exclude-members: register_script
 
-.. autoclass:: asyncio_redis.BytesConnection
-
 Connection pool
 ---------------
 
 .. autoclass:: asyncio_redis.Pool
     :members:
-
-.. autoclass:: asyncio_redis.BytesPool
 
 Command replies
 ---------------

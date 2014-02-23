@@ -69,6 +69,12 @@ Command replies
 .. autoclass:: asyncio_redis.replies.BlockingPopReply
     :members:
 
+.. autoclass:: asyncio_redis.replies.InfoReply
+    :members:
+
+.. autoclass:: asyncio_redis.replies.ClientListReply
+    :members:
+
 
 Cursors
 -------

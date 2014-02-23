@@ -31,6 +31,7 @@ from asyncio_redis.replies import (
         SetReply,
         StatusReply,
         ZRangeReply,
+        ClientListReply,
 )
 from asyncio_redis.cursors import Cursor, SetCursor, DictCursor, ZCursor
 from asyncio_redis.encoders import BytesEncoder, UTF8Encoder
@@ -1102,6 +1103,10 @@ class RedisProtocolTest(unittest.TestCase):
         # client_getname
         result = yield from protocol.client_getname()
         self.assertEqual(result, u'my-connection-name')
+
+        # client list
+        result = yield from protocol.client_list()
+        self.assertIsInstance(result, ClientListReply)
 
     @redis_test
     def test_lua_script(self, transport, protocol):

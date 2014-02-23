@@ -178,7 +178,13 @@ class ConfigPairReply:
 class InfoReply:
     """ :func:`info <asyncio_redis.RedisProtocol.info>` reply. """
     def __init__(self, data):
-        self._data = data
+        self._data = data # TODO: implement parser logic
+
+
+class ClientListReply:
+    """ :func:`info <asyncio_redis.RedisProtocol.client_list>` reply. """
+    def __init__(self, data):
+        self._data = data # TODO: implement parser logic
 
 
 class PubSubReply:

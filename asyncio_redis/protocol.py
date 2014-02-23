@@ -15,7 +15,7 @@ from inspect import getfullargspec, formatargspec, getcallargs
 
 from .encoders import BaseEncoder, UTF8Encoder
 from .exceptions import Error, ErrorReply, TransactionError, NotConnectedError, ConnectionLostError, NoRunningScriptError, ScriptKilledError
-from .replies import BlockingPopReply, DictReply, ListReply, PubSubReply, SetReply, StatusReply, ZRangeReply, ConfigPairReply, InfoReply
+from .replies import BlockingPopReply, DictReply, ListReply, PubSubReply, SetReply, StatusReply, ZRangeReply, ConfigPairReply, InfoReply, ClientListReply
 
 
 from .cursors import Cursor, SetCursor, DictCursor, ZCursor
@@ -171,6 +171,7 @@ class PostProcessors:
                 NativeType: cls.bytes_to_native,
                 (NativeType, NoneType): cls.bytes_to_native_or_none,
                 InfoReply: cls.bytes_to_info,
+                ClientListReply: cls.bytes_to_clientlist,
                 str: cls.bytes_to_str,
                 bool: cls.int_to_bool,
                 BlockingPopReply: cls.multibulk_as_blocking_pop_reply,
@@ -276,6 +277,11 @@ class PostProcessors:
     def bytes_to_info(protocol, result):
         assert isinstance(result, bytes)
         return InfoReply(result)
+
+    @asyncio.coroutine
+    def bytes_to_clientlist(protocol, result):
+        assert isinstance(result, bytes)
+        return ClientListReply(result)
 
     @asyncio.coroutine
     def int_to_bool(protocol, result):
@@ -435,6 +441,7 @@ class CommandCreator:
                     ConfigPairReply: ":class:`ConfigPairReply <asyncio_redis.replies.ConfigPairReply>`",
                     DictReply: ":class:`DictReply <asyncio_redis.replies.DictReply>`",
                     InfoReply: ":class:`InfoReply <asyncio_redis.replies.InfoReply>`",
+                    ClientListReply: ":class:`InfoReply <asyncio_redis.replies.ClientListReply>`",
                     ListReply: ":class:`ListReply <asyncio_redis.replies.ListReply>`",
                     MultiBulkReply: ":class:`MultiBulkReply <asyncio_redis.replies.MultiBulkReply>`",
                     NativeType: "Native Python type, as defined by :attr:`encoder.native_type <asyncio_redis.encoders.BaseEncoder.native_type>`",
@@ -1777,6 +1784,19 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     def client_setname(self, name) -> StatusReply:
         """ Set the current connection name """
         return self._query(b'client', b'setname', self.encode_from_native(name))
+
+    @_query_command
+    def client_list(self) -> ClientListReply:
+        """ Get the list of client connections """
+        return self._query(b'client', b'list')
+
+    @_query_command
+    def client_kill(self, address:str) -> StatusReply:
+        """
+        Kill the connection of a client
+        `address` should be an "ip:port" string.
+        """
+        return self._query(b'client', b'kill', address.encode('utf-8'))
 
     # LUA scripting
 

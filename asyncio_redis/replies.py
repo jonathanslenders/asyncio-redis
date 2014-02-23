@@ -79,8 +79,8 @@ class ZRangeReply(DictReply):
 class SetReply:
     """
     Redis set result.
-    The content can be retrieved by calling ``get_as_set`` or by
-    iterating over it
+    The content can be retrieved by calling
+    :func:`~asyncio_redis.replies.SetReply.get_as_set` or by iterating over it
 
     ::
 
@@ -108,8 +108,9 @@ class SetReply:
 class ListReply:
     """
     Redis list result.
-    The content can be retrieved by calling ``get_as_list`` or by
-    iterating over it
+    The content can be retrieved by calling
+    :func:`~asyncio_redis.replies.ListReply.get_as_list` or by iterating over it
+    or by iterating over it
 
     ::
 
@@ -134,8 +135,8 @@ class ListReply:
 
 class BlockingPopReply:
     """
-    :func:`blpop <asyncio_redis.RedisProtocol.blpop>` or :func:`brpop
-    <asyncio_redis.RedisProtocol.brpop>` reply
+    :func:`~asyncio_redis.RedisProtocol.blpop` or
+    :func:`~asyncio_redis.RedisProtocol.brpop` reply
     """
     def __init__(self, list_name, value):
         self._list_name = list_name
@@ -156,7 +157,7 @@ class BlockingPopReply:
 
 
 class ConfigPairReply:
-    """ :func:`config_get <asyncio_redis.RedisProtocol.config_get>` reply. """
+    """ :func:`~asyncio_redis.RedisProtocol.config_get` reply. """
     def __init__(self, parameter, value):
         self._paramater = parameter
         self._value = value
@@ -176,13 +177,13 @@ class ConfigPairReply:
 
 
 class InfoReply:
-    """ :func:`info <asyncio_redis.RedisProtocol.info>` reply. """
+    """ :func:`~asyncio_redis.RedisProtocol.info` reply. """
     def __init__(self, data):
         self._data = data # TODO: implement parser logic
 
 
 class ClientListReply:
-    """ :func:`info <asyncio_redis.RedisProtocol.client_list>` reply. """
+    """ :func:`~asyncio_redis.RedisProtocol.client_list` reply. """
     def __init__(self, data):
         self._data = data # TODO: implement parser logic
 

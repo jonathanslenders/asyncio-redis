@@ -953,7 +953,14 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @asyncio.coroutine
     def _query(self, *args, _bypass=False, set_blocking=False):
-        """ Wrapper around both _send_command and _get_answer. """
+        """
+        Wrapper around both _send_command and _get_answer.
+
+        Coroutine that sends the query to the server, and returns the reply.
+        (Where the reply is a simple Redis type: these are `int`,
+        `StatusReply`, `bytes` or `MultiBulkReply`) When we are in a transaction,
+        this coroutine will return a `Future` of the actual result.
+        """
         if not self._is_connected:
             raise NotConnectedError
 
@@ -989,7 +996,15 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def set(self, key:NativeType, value:NativeType) -> StatusReply:
-        """ Set the string value of a key """
+        """
+        Set the string value of a key
+
+        ::
+
+            yield from protocol.set('key', 'value')
+            result = yield from protocol.get('key')
+            assert result == 'value'
+        """
         return self._query(b'set', self.encode_from_native(key), self.encode_from_native(value))
 
     @_query_command

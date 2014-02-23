@@ -1763,6 +1763,11 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         else:
             return self._query(b'info', self.encode_from_native(section))
 
+    @_query_command
+    def shutdown(self, save=False) -> StatusReply:
+        """ Synchronously save the dataset to disk and then shut down the server """
+        return self._query(b'shutdown', (b'save' if save else b'nosave'))
+
     # LUA scripting
 
     @_query_command

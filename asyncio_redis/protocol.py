@@ -1712,6 +1712,11 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return self._query(b'bgsave')
 
     @_query_command
+    def bgrewriteaof(self) -> StatusReply:
+        """ Asynchronously rewrite the append-only file """
+        return self._query(b'bgrewriteaof')
+
+    @_query_command
     def lastsave(self) -> int:
         """ Get the UNIX time stamp of the last successful save to disk """
         return self._query(b'lastsave')

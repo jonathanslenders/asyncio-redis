@@ -55,11 +55,11 @@ class ZScoreBoundary:
 ZScoreBoundary.MIN_VALUE = ZScoreBoundary('-inf')
 ZScoreBoundary.MAX_VALUE = ZScoreBoundary('+inf')
 
+
 class ZAggregate: # TODO: use the Python 3.4 enum type.
     """
     Aggregation method for zinterstore and zunionstore.
     """
-
     #: Sum aggregation.
     SUM = 'SUM'
 
@@ -320,6 +320,7 @@ class PostProcessors:
 
 
 class ListOf:
+    """ Annotation helper for protocol methods. """
     def __init__(self, type_):
         self.type = type_
 
@@ -349,6 +350,9 @@ class CommandCreator:
     This wrapper handles (optionally) post processing of the returned data and
     implements some logic where commands behave different in case of a
     transaction or pubsub.
+
+    Warning: We use the annotations of `method` extensively for type checking
+             and determining which post processor to choose.
     """
     def __init__(self, method):
         self.method = method
@@ -360,6 +364,7 @@ class CommandCreator:
 
     @property
     def return_type(self):
+        """ Return type as defined in the method's annotation. """
         return self.specs.annotations.get('return', None)
 
     @property
@@ -384,7 +389,8 @@ class CommandCreator:
         else:
             return type_
 
-    def create_input_typechecker(self):
+    def _create_input_typechecker(self):
+        """ Return function that does typechecking on input data. """
         params = self.params
 
         if params:
@@ -406,7 +412,8 @@ class CommandCreator:
 
         return typecheck_input
 
-    def create_return_typechecker(self, return_type):
+    def _create_return_typechecker(self, return_type):
+        """ Return function that does typechecking on output data. """
         if return_type and not isinstance(return_type, str): # Exclude 'Transaction'/'Subscription' which are 'str'
             def typecheck_return(protocol, result):
                 """
@@ -444,7 +451,7 @@ class CommandCreator:
                     ClientListReply: ":class:`InfoReply <asyncio_redis.replies.ClientListReply>`",
                     ListReply: ":class:`ListReply <asyncio_redis.replies.ListReply>`",
                     MultiBulkReply: ":class:`MultiBulkReply <asyncio_redis.replies.MultiBulkReply>`",
-                    NativeType: "Native Python type, as defined by :attr:`encoder.native_type <asyncio_redis.encoders.BaseEncoder.native_type>`",
+                    NativeType: "Native Python type, as defined by :attr:`~asyncio_redis.encoders.BaseEncoder.native_type`",
                     NoneType: "None",
                     SetReply: ":class:`SetReply <asyncio_redis.replies.SetReply>`",
                     StatusReply: ":class:`StatusReply <asyncio_redis.replies.StatusReply>`",
@@ -503,8 +510,8 @@ class CommandCreator:
         """
         Return the wrapped method for use in the `RedisProtocol` class.
         """
-        typecheck_input = self.create_input_typechecker()
-        typecheck_return = self.create_return_typechecker(return_type)
+        typecheck_input = self._create_input_typechecker()
+        typecheck_return = self._create_return_typechecker(return_type)
         method = self.method
 
         # Wrap it into a check which allows this command to be run either
@@ -638,7 +645,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     :param password: Redis database password
     :type password: bytes
     :param encoder: Encoder to use for encoding to or decoding from redis bytes to a native type.
-    :type encoder: :class:`asyncio_redis.encoders.BaseEncoder` instance.
+    :type encoder: :class:`~asyncio_redis.encoders.BaseEncoder` instance.
     :param db: Redis database
     :type db: int
     :param enable_typechecking: When ``True``, check argument types for all

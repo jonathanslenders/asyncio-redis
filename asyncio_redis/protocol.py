@@ -2111,6 +2111,6 @@ class Subscription:
         Coroutine which waits for next pubsub message to be received and
         returns it.
 
-        :returns: instance of :class:`PubSubReply <asyncio_redis.PubSubReply>`
+        :returns: instance of :class:`PubSubReply <asyncio_redis.replies.PubSubReply>`
         """
         return self._messages_queue.get()

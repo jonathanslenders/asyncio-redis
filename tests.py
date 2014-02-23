@@ -1094,6 +1094,16 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertIsInstance(result, int)
 
     @redis_test
+    def test_client_names(self, transport, protocol):
+        # client_setname
+        result = yield from protocol.client_setname(u'my-connection-name')
+        self.assertEqual(result, StatusReply('OK'))
+
+        # client_getname
+        result = yield from protocol.client_getname()
+        self.assertEqual(result, u'my-connection-name')
+
+    @redis_test
     def test_lua_script(self, transport, protocol):
         code = """
         local value = redis.call('GET', KEYS[1])

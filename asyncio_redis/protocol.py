@@ -1768,6 +1768,16 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         """ Synchronously save the dataset to disk and then shut down the server """
         return self._query(b'shutdown', (b'save' if save else b'nosave'))
 
+    @_query_command
+    def client_getname(self) -> NativeType:
+        """ Get the current connection name """
+        return self._query(b'client', b'getname')
+
+    @_query_command
+    def client_setname(self, name) -> StatusReply:
+        """ Set the current connection name """
+        return self._query(b'client', b'setname', self.encode_from_native(name))
+
     # LUA scripting
 
     @_query_command

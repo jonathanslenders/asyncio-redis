@@ -1,7 +1,12 @@
 Redis client for PEP3156 asyncio (tulip)
 ========================================
 
-|Build Status| |Build Status2| 
+|Build Status|
+
+..
+    # Don't show the Build status on drone.io. Update script first. It's still
+    # using an older Redis version.
+    # |Build Status2| 
 
 Features
 --------

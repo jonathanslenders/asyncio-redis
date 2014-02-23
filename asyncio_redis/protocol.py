@@ -1643,6 +1643,30 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         (Returns the number of clients that received this message.) """
         return self._query(b'publish', self.encode_from_native(channel), self.encode_from_native(message))
 
+    @_query_command
+    def pubsub_channels(self, pattern:(NativeType, NoneType)=None) -> ListReply:
+        """
+        Lists the currently active channels. An active channel is a Pub/Sub
+        channel with one ore more subscribers (not including clients subscribed
+        to patterns).
+        """
+        return self._query(b'pubsub', b'channels',
+                    (self.encode_from_native(pattern) if pattern else b'*'))
+
+    @_query_command
+    def pubsub_numsub(self, channels:ListOf(NativeType)) -> DictReply:
+        """Returns the number of subscribers (not counting clients subscribed
+        to patterns) for the specified channels.  """
+        return self._query(b'pubsub', b'numsub', *[ self.encode_from_native(c) for c in channels ])
+
+    @_query_command
+    def pubsub_numpat(self) -> int:
+        """ Returns the number of subscriptions to patterns (that are performed
+        using the PSUBSCRIBE command). Note that this is not just the count of
+        clients subscribed to patterns but the total number of patterns all the
+        clients are subscribed to. """
+        return self._query(b'pubsub', b'numpat')
+
     # Server
 
     @_query_command

@@ -752,6 +752,34 @@ class RedisProtocolTest(unittest.TestCase):
             value = yield from protocol.publish(u'our_channel', 'message2')
             self.assertEqual(value, 1)
 
+            # Test pubsub_channels
+            result = yield from protocol.pubsub_channels()
+            self.assertIsInstance(result, ListReply)
+            result = yield from result.get_as_list()
+            self.assertIn(u'our_channel', result)
+
+            result = yield from protocol.pubsub_channels_aslist(u'our_c*')
+            self.assertIn(u'our_channel', result)
+
+            result = yield from protocol.pubsub_channels_aslist(u'unknown-channel-prefix*')
+            self.assertEqual(result, [])
+
+            # Test pubsub numsub.
+            result = yield from protocol.pubsub_numsub([ u'our_channel', u'some_unknown_channel' ])
+            self.assertIsInstance(result, DictReply)
+            result = yield from result.get_as_dict()
+            self.assertEqual(len(result), 2)
+            self.assertGreater(int(result['our_channel']), 0)
+                    # XXX: the cast to int is required, because the redis
+                    #      protocol currently returns strings instead of
+                    #      integers for the count. See:
+                    #      https://github.com/antirez/redis/issues/1561
+            self.assertEqual(int(result['some_unknown_channel']), 0)
+
+            # Test pubsub numpat
+            result = yield from protocol.pubsub_numpat()
+            self.assertIsInstance(result, int)
+
         yield from asyncio.sleep(.5)
         yield from sender()
         yield from f

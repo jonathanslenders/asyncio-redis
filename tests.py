@@ -934,10 +934,6 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertEqual((yield from result.get_as_dict()),
                 { 'key': 4.0, 'key2': 5.0, 'key3': 5.5 })
 
-        result = yield from protocol.zrangebyscore('myzset')
-        self.assertEqual((yield from result.get_keys_as_list()),
-                [ 'key', 'key2', 'key3' ])
-
         result = yield from protocol.zrangebyscore('myzset', min=ZScoreBoundary(4.5))
         self.assertEqual((yield from result.get_as_dict()),
                 { 'key2': 5.0, 'key3': 5.5 })
@@ -955,10 +951,6 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertIsInstance(result, DictReply)
         self.assertEqual((yield from result.get_as_dict()),
                 { 'key': 4.0, 'key2': 5.0, 'key3': 5.5 })
-
-        result = yield from protocol.zrevrangebyscore('myzset')
-        self.assertEqual((yield from result.get_keys_as_list()),
-                [ 'key3', 'key2', 'key' ])
 
         result = yield from protocol.zrevrangebyscore('myzset', min=ZScoreBoundary(4.5))
         self.assertEqual((yield from result.get_as_dict()),

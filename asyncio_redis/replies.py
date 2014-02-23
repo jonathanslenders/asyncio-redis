@@ -63,14 +63,6 @@ class DictReply:
             result.update((yield from f))
         return result
 
-    @asyncio.coroutine
-    def get_keys_as_list(self):
-        """ Return the keys as a list. """
-        result = []
-        for f in self:
-            result += (yield from f).keys()
-        return result
-
     def __repr__(self):
         return '%s(length=%r)' % (self.__class__.__name__, int(self._result.count / 2))
 

@@ -1,3 +1,8 @@
+#!/usr/bin/env python
+"""
+Example of how an 'smembers' call gets streamed when it's a big reply, covering
+multiple IP packets.
+"""
 import asyncio
 import logging
 import asyncio_redis

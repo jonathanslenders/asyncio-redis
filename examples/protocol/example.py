@@ -1,3 +1,7 @@
+#!/usr/bin/env python
+"""
+Simple example that sets a key, and retrieves it again.
+"""
 import asyncio
 from asyncio_redis import RedisProtocol
 

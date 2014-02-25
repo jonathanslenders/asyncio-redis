@@ -1,3 +1,7 @@
+#!/usr/bin/env python
+"""
+Benchmank how long it takes to set 10,000 keys in the database.
+"""
 import asyncio
 import logging
 import asyncio_redis

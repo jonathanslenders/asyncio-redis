@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import asyncio
 import asyncio_redis
 import logging

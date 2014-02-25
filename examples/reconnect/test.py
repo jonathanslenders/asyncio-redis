@@ -1,3 +1,8 @@
+#!/usr/bin/env python
+"""
+Example of how the connection should reconnect to the server.
+It's a loop that publishes 'message' in 'our-channel'.
+"""
 import asyncio
 import logging
 import asyncio_redis
@@ -10,7 +15,7 @@ if __name__ == '__main__':
     logging.getLogger().setLevel(logging.INFO)
 
     def run():
-        connection = yield from asyncio.Connection.create('localhost', 9999)
+        connection = yield from asyncio_redis.Connection.create(host='localhost', port=6379)
 
         while True:
             yield from asyncio.sleep(.5)

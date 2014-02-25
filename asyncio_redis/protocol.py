@@ -813,17 +813,9 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         """
         Coroutine which reads input from the stream reader and processes it.
         """
-        def item_callback(item):
-            f = self._queue.popleft()
-
-            if isinstance(item, Exception):
-                f.set_exception(item)
-            else:
-                f.set_result(item)
-
         while True:
             try:
-                yield from self._handle_item(item_callback)
+                yield from self._handle_item(self._push_answer)
             except ConnectionLostError:
                 return
 

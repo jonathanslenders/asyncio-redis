@@ -914,11 +914,11 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         # of arguments first.
 
         # Serialize and write header (number of arguments.)
-        data.append((u'*%i\r\n' % len(args)).encode('ascii'))
+        data += [ b'*', self._encode_int(len(args)), b'\r\n' ]
 
         # Write arguments.
         for arg in args:
-            data += [ (u'$%i\r\n' % len(arg)).encode('ascii'), arg, b'\r\n' ]
+            data += [ b'$', self._encode_int(len(arg)), b'\r\n', arg, b'\r\n' ]
 
         # Flush the last part
         self.transport.write(b''.join(data))

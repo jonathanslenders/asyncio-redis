@@ -53,7 +53,7 @@ class DictReply:
             yield asyncio.Task(getter(next(i), next(i)))
 
     @asyncio.coroutine
-    def get_as_dict(self):
+    def asdict(self):
         """
         Return the result of a sorted set query as dictionary.
         This is a mapping from the elements to their scores.
@@ -80,7 +80,7 @@ class SetReply:
     """
     Redis set result.
     The content can be retrieved by calling
-    :func:`~asyncio_redis.replies.SetReply.get_as_set` or by iterating over it
+    :func:`~asyncio_redis.replies.SetReply.asset` or by iterating over it
 
     ::
 
@@ -96,7 +96,7 @@ class SetReply:
         return iter(self._result)
 
     @asyncio.coroutine
-    def get_as_set(self):
+    def asset(self):
         """ Return the result as a Python ``set``.  """
         result = yield from gather(* list(self._result))
         return set(result)
@@ -109,7 +109,7 @@ class ListReply:
     """
     Redis list result.
     The content can be retrieved by calling
-    :func:`~asyncio_redis.replies.ListReply.get_as_list` or by iterating over it
+    :func:`~asyncio_redis.replies.ListReply.aslist` or by iterating over it
     or by iterating over it
 
     ::
@@ -125,7 +125,7 @@ class ListReply:
         """ Yield a list of futures. """
         return iter(self._result)
 
-    def get_as_list(self):
+    def aslist(self):
         """ Return the result as a Python ``list``. """
         return gather(* list(self._result))
 

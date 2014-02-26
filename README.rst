@@ -166,7 +166,8 @@ LUA Scripting example
         multiply = yield from connection.register_script(code)
 
         # Run script
-        result = yield from multiply.run(keys=['my_key'], args=['5'])
+        script_reply = yield from multiply.run(keys=['my_key'], args=['5'])
+        result = yield from script_reply.return_value()
         print(result) # prints 2 * 5
 
 

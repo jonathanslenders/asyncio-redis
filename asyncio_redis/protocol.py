@@ -218,21 +218,21 @@ class PostProcessors:
             @asyncio.coroutine
             def as_list(protocol, result):
                 result = yield from original_post_processor(protocol, result)
-                return (yield from result.get_as_list())
+                return (yield from result.aslist())
             return '_aslist', list, as_list
 
         elif return_type == SetReply:
             @asyncio.coroutine
             def as_set(protocol, result):
                 result = yield from original_post_processor(protocol, result)
-                return (yield from result.get_as_set())
+                return (yield from result.asset())
             return '_asset', set, as_set
 
         elif return_type == DictReply:
             @asyncio.coroutine
             def as_dict(protocol, result):
                 result = yield from original_post_processor(protocol, result)
-                return (yield from result.get_as_dict())
+                return (yield from result.asdict())
             return '_asdict', dict, as_dict
 
     # === Post processor handlers below. ===
@@ -246,7 +246,7 @@ class PostProcessors:
     def multibulk_as_boolean_list(protocol, result):
         # Turn the array of integers into booleans.
         assert isinstance(result, MultiBulkReply)
-        values = yield from ListReply(result).get_as_list()
+        values = yield from ListReply(result).aslist()
         return [ bool(v) for v in values ]
 
     @asyncio.coroutine
@@ -267,13 +267,13 @@ class PostProcessors:
     @asyncio.coroutine
     def multibulk_as_blocking_pop_reply(protocol, result):
         assert isinstance(result, MultiBulkReply)
-        list_name, value = yield from ListReply(result).get_as_list()
+        list_name, value = yield from ListReply(result).aslist()
         return BlockingPopReply(list_name, value)
 
     @asyncio.coroutine
     def multibulk_as_configpair(protocol, result):
         assert isinstance(result, MultiBulkReply)
-        parameter, value = yield from ListReply(result).get_as_list()
+        parameter, value = yield from ListReply(result).aslist()
         return ConfigPairReply(parameter, value)
 
     @asyncio.coroutine
@@ -286,12 +286,12 @@ class PostProcessors:
         """
         # Get outer multi bulk reply.
         assert isinstance(result, MultiBulkReply)
-        new_cursor_pos, items_bulk = yield from ListReply(result).get_as_list()
+        new_cursor_pos, items_bulk = yield from ListReply(result).aslist()
         assert isinstance(items_bulk, MultiBulkReply)
 
         # Read all items for scan chunk in memory. This is fine, because it's
         # transmitted in chunks of about 10.
-        items = yield from ListReply(items_bulk).get_as_list()
+        items = yield from ListReply(items_bulk).aslist()
         return _ScanPart(int(new_cursor_pos), items)
 
     @asyncio.coroutine
@@ -920,7 +920,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @asyncio.coroutine
     def _handle_pubsub_multibulk_reply(self, multibulk_reply):
-        result = yield from ListReply(multibulk_reply).get_as_list()
+        result = yield from ListReply(multibulk_reply).aslist()
         assert result[0] in ('message', 'subscribe', 'unsubscribe', 'psubscribe', 'punsubscribe')
 
         if result[0] == 'message':
@@ -1426,14 +1426,14 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         ::
 
             result = yield protocol.zrange('myzset', start=10, stop=20)
-            my_dict = yield result.get_as_dict()
+            my_dict = yield result.asdict()
 
         or the following to retrieve it as a list of keys:
 
         ::
 
             result = yield protocol.zrange('myzset', start=10, stop=20)
-            my_dict = yield result.get_as_list()
+            my_dict = yield result.aslist()
         """
         return self._query(b'zrange', self.encode_from_native(key),
                     self._encode_int(start), self._encode_int(stop), b'withscores')

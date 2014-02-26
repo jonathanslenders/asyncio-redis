@@ -590,6 +590,8 @@ class QueryCommandCreator(CommandCreator):
 
         return result
 
+_SMALL_INTS = list(str(i).encode('ascii') for i in range(1000))
+
 
 # List of all command methods.
 _all_commands = []
@@ -734,7 +736,10 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     def _encode_int(self, value:int) -> bytes:
         """ Encodes an integer to bytes. (always ascii) """
-        return str(value).encode('ascii')
+        if value < 1000: # For small values, take pre-encoded string.
+            return _SMALL_INTS[value]
+        else:
+            return str(value).encode('ascii')
 
     def _encode_float(self, value:float) -> bytes:
         """ Encodes a float to bytes. (always ascii) """

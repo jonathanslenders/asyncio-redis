@@ -645,8 +645,9 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         transport, protocol = yield from loop.create_connection(RedisProtocol, 'localhost', 6379)
 
     :param password: Redis database password
-    :type password: bytes
+    :type password: Native Python type as defined by the ``encoder`` parameter
     :param encoder: Encoder to use for encoding to or decoding from redis bytes to a native type.
+                    (Defaults to :class:`~asyncio_redis.encoders.UTF8Encoder`)
     :type encoder: :class:`~asyncio_redis.encoders.BaseEncoder` instance.
     :param db: Redis database
     :type db: int

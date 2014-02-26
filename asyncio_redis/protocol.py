@@ -1108,11 +1108,6 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         (Returns 1 if the key was successfully renamed.) """
         return self._query(b'renamenx', self.encode_from_native(key), self.encode_from_native(newkey))
 
-#    @_query_command
-#    def getbit(self, key:NativeType, offset):
-#        """ Returns the bit value at offset in the string value stored at key """
-#        raise NotImplementedError
-
     @_query_command
     def bitop_and(self, destkey:NativeType, srckeys:ListOf(NativeType)) -> int:
         """ Perform a bitwise AND operation between multiple keys. """

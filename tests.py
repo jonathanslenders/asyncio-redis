@@ -734,12 +734,12 @@ class RedisProtocolTest(unittest.TestCase):
             #self.assertEqual(repr(value), u"SubscribeReply(channel='our_channel')")
             #self.assertEqual(value.channel, u'our_channel')
 
-            value = yield from subscription.get_next_published()
+            value = yield from subscription.next_published()
             self.assertIsInstance(value, PubSubReply)
             self.assertEqual(value.channel, u'our_channel')
             self.assertEqual(value.value, u'message1')
 
-            value = yield from subscription.get_next_published()
+            value = yield from subscription.next_published()
             self.assertIsInstance(value, PubSubReply)
             self.assertEqual(value.channel, u'our_channel')
             self.assertEqual(value.value, u'message2')

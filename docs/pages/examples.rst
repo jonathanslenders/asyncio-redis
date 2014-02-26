@@ -119,7 +119,7 @@ the :class:`Connection <asyncio_redis.Connection>` class or through the :class:`
 
         # Inside a while loop, wait for incoming events.
         while True:
-            reply = yield from subscriber.get_next_published()
+            reply = yield from subscriber.next_published()
             print('Received: ', repr(reply.value), 'on channel', reply.channel)
 
 

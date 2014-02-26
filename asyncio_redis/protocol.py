@@ -1631,7 +1631,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             yield from subscription.psubscribe(['pattern*'])
 
             while True:
-                result = yield from subscription.get_next_published()
+                result = yield from subscription.next_published()
                 print(result)
 
         :returns: :class:`asyncio_redis.Subscription`
@@ -2190,11 +2190,12 @@ class Subscription:
     def punsubscribe(self, patterns):
         return self.protocol._punsubscribe(self, patterns)
 
-    def get_next_published(self):
+    @asyncio.coroutine
+    def next_published(self):
         """
         Coroutine which waits for next pubsub message to be received and
         returns it.
 
         :returns: instance of :class:`PubSubReply <asyncio_redis.replies.PubSubReply>`
         """
-        return self._messages_queue.get()
+        return (yield from self._messages_queue.get())

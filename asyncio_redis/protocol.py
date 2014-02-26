@@ -14,8 +14,28 @@ from functools import wraps
 from inspect import getfullargspec, formatargspec, getcallargs
 
 from .encoders import BaseEncoder, UTF8Encoder
-from .exceptions import Error, ErrorReply, TransactionError, NotConnectedError, ConnectionLostError, NoRunningScriptError, ScriptKilledError
-from .replies import BlockingPopReply, DictReply, ListReply, PubSubReply, SetReply, StatusReply, ZRangeReply, ConfigPairReply, InfoReply, ClientListReply
+from .exceptions import (
+        Error,
+        ErrorReply,
+        TransactionError,
+        NotConnectedError,
+        ConnectionLostError,
+        NoRunningScriptError,
+        ScriptKilledError,
+)
+from .replies import (
+        BlockingPopReply,
+        ClientListReply,
+        ConfigPairReply,
+        DictReply,
+        EvalScriptReply,
+        InfoReply,
+        ListReply,
+        PubSubReply,
+        SetReply,
+        StatusReply,
+        ZRangeReply,
+)
 
 
 from .cursors import Cursor, SetCursor, DictCursor, ZCursor
@@ -183,8 +203,9 @@ class PostProcessors:
                 ConfigPairReply: cls.multibulk_as_configpair,
                 ListOf(bool): cls.multibulk_as_boolean_list,
                 _ScanPart: cls.multibulk_as_scanpart,
+                EvalScriptReply: cls.any_to_evalscript,
 
-                None: None,  # XXX: We shouldn't allow 'None' anymore. It is still used by _subscribe.
+                NoneType: None,
         }[return_type]
 
     @classmethod
@@ -317,6 +338,12 @@ class PostProcessors:
     def bytes_to_float(protocol, result):
         assert isinstance(result, bytes)
         return float(result)
+
+    @asyncio.coroutine
+    def any_to_evalscript(protocol, result):
+        # Result can be native, int, MultiBulkReply or even a nested structure
+        assert isinstance(result, (int, bytes, MultiBulkReply, NoneType))
+        return EvalScriptReply(protocol, result)
 
 
 class ListOf:
@@ -457,6 +484,7 @@ class CommandCreator:
                     StatusReply: ":class:`StatusReply <asyncio_redis.replies.StatusReply>`",
                     ZRangeReply: ":class:`ZRangeReply <asyncio_redis.replies.ZRangeReply>`",
                     ZScoreBoundary: ":class:`ZScoreBoundary <asyncio_redis.replies.ZScoreBoundary>`",
+                    EvalScriptReply: ":class:`EvalScriptReply <asyncio_redis.replies.EvalScriptReply>`",
                     Cursor: ":class:`Cursor <asyncio_redis.cursors.Cursor>`",
                     SetCursor: ":class:`SetCursor <asyncio_redis.cursors.SetCursor>`",
                     DictCursor: ":class:`DictCursor <asyncio_redis.cursors.DictCursor>`",
@@ -476,6 +504,7 @@ class CommandCreator:
                     # XXX: Because of circulare references, we cannot use the real types here.
                     'Transaction': ":class:`asyncio_redis.Transaction`",
                     'Subscription': ":class:`asyncio_redis.Subscription`",
+                    'Script': ":returns: :class:`asyncio_redis.Script`",
                 }[type_]
             except KeyError:
                 if isinstance(type_, ListOf):
@@ -1622,25 +1651,25 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return subscription
 
     @_query_command
-    def _subscribe(self, channels:ListOf(NativeType)):
+    def _subscribe(self, channels:ListOf(NativeType)) -> NoneType:
         """ Listen for messages published to the given channels """
         self._pubsub_channels |= set(channels)
         return self._pubsub_method('subscribe', channels)
 
     @_query_command
-    def _unsubscribe(self, channels:ListOf(NativeType)):
+    def _unsubscribe(self, channels:ListOf(NativeType)) -> NoneType:
         """ Stop listening for messages posted to the given channels """
         self._pubsub_channels -= set(channels)
         return self._pubsub_method('unsubscribe', channels)
 
     @_query_command
-    def _psubscribe(self, patterns:ListOf(NativeType)):
+    def _psubscribe(self, patterns:ListOf(NativeType)) -> NoneType:
         """ Listen for messages published to channels matching the given patterns """
         self._pubsub_patterns |= set(patterns)
         return self._pubsub_method('psubscribe', patterns)
 
     @_query_command
-    def _punsubscribe(self, patterns:ListOf(NativeType)):
+    def _punsubscribe(self, patterns:ListOf(NativeType)) -> NoneType:
         """ Stop listening for messages posted to channels matching the given patterns """
         self._pubsub_patterns -= set(channels)
         return self._pubsub_method('punsubscribe', patterns)
@@ -1736,10 +1765,10 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         """ Delete all the keys of the currently selected DB. This command never fails. """
         return self._query(b'flushdb')
 
-    @_query_command
-    def object(self, subcommand, args):
-        """ Inspect the internals of Redis objects """
-        raise NotImplementedError
+#    @_query_command
+#    def object(self, subcommand, args):
+#        """ Inspect the internals of Redis objects """
+#        raise NotImplementedError
 
     @_query_command
     def type(self, key:NativeType) -> StatusReply:
@@ -1805,8 +1834,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     # LUA scripting
 
-    @_query_command
-    def register_script(self, script:str): # -> Script:
+    @_command
+    def register_script(self, script:str) -> 'Script':
         """
         Register a LUA script.
 
@@ -1814,8 +1843,6 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
             script = yield from protocol.register_script(lua_code)
             result = yield from script.run(keys=[...], args=[...])
-
-        :returns: :class:`asyncio_redis.Script`
         """
         # The register_script APi was made compatible with the redis.py library:
         # https://github.com/andymccurdy/redis-py
@@ -1846,21 +1873,20 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     @_query_command
     def evalsha(self, sha:str,
                         keys:(ListOf(NativeType), NoneType)=None,
-                        args:(ListOf(NativeType), NoneType)=None):
+                        args:(ListOf(NativeType), NoneType)=None) -> EvalScriptReply:
         """
         Evaluates a script cached on the server side by its SHA1 digest.
         Scripts are cached on the server side using the SCRIPT LOAD command.
 
         The return type/value depends on the script.
         """
+        if not keys: keys = []
+        if not args: args = []
+
         try:
             result = yield from self._query(b'evalsha', sha.encode('ascii'),
                         self._encode_int(len(keys)),
                         *map(self.encode_from_native, keys + args))
-
-            # In case that we receive bytes, decode to string.
-            if isinstance(result, bytes):
-                result = self.decode_to_native(result)
 
             return result
         except ErrorReply as e:
@@ -2082,7 +2108,10 @@ class Script:
 
         ::
 
-            yield from script.run(keys=[], args=[])
+            script_reply = yield from script.run(keys=[], args=[])
+
+            # If the LUA script returns something, retrieve the return value
+            result = yield from script_reply.return_value()
         """
         return self.get_evalsha_func()(self.sha, keys, args)
 

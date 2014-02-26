@@ -23,15 +23,16 @@ from asyncio_redis import (
 )
 from asyncio_redis.replies import (
         BlockingPopReply,
+        ClientListReply,
         ConfigPairReply,
         DictReply,
+        EvalScriptReply,
         InfoReply,
         ListReply,
         PubSubReply,
         SetReply,
         StatusReply,
         ZRangeReply,
-        ClientListReply,
 )
 from asyncio_redis.cursors import Cursor, SetCursor, DictCursor, ZCursor
 from asyncio_redis.encoders import BytesEncoder, UTF8Encoder
@@ -1123,10 +1124,14 @@ class RedisProtocolTest(unittest.TestCase):
 
         # Call script.
         result = yield from script.run(keys=['foo'], args=['5'])
+        self.assertIsInstance(result, EvalScriptReply)
+        result = yield from result.return_value()
         self.assertEqual(result, 10)
 
         # Test evalsha directly
         result = yield from protocol.evalsha(script.sha, keys=['foo'], args=['5'])
+        self.assertIsInstance(result, EvalScriptReply)
+        result = yield from result.return_value()
         self.assertEqual(result, 10)
 
         # Test script exists
@@ -1140,6 +1145,17 @@ class RedisProtocolTest(unittest.TestCase):
         result = yield from protocol.script_exists([ script.sha, script.sha, 'unknown-script' ])
         self.assertEqual(result, [ False, False, False ])
 
+        # Test another script where evalsha returns a string.
+        code2 = """
+        return "text"
+        """
+        script2 = yield from protocol.register_script(code2)
+        result = yield from protocol.evalsha(script2.sha)
+        self.assertIsInstance(result, EvalScriptReply)
+        result = yield from result.return_value()
+        self.assertIsInstance(result, str)
+        self.assertEqual(result, u'text')
+
     @redis_test
     def test_script_return_types(self, transport, protocol):
         #  Test whether LUA scripts are returning correct return values.
@@ -1147,13 +1163,18 @@ class RedisProtocolTest(unittest.TestCase):
             'return "string" ': "string", # str
             'return 5 ': 5, # int
             'return ': None, # NoneType
+            'return {1, 2, 3}': [1, 2, 3], # list
+
+            # Complex nested data structure.
+            'return {1, 2, "text", {3, { 4, 5 }, 6, { 7, 8 } } }': [1, 2, "text", [3, [ 4, 5 ], 6, [ 7, 8 ] ] ],
         }
         for code, return_value in script_and_return_values.items():
             # Register script
             script = yield from protocol.register_script(code)
 
             # Call script.
-            result = yield from script.run()
+            scriptreply = yield from script.run()
+            result = yield from scriptreply.return_value()
             self.assertEqual(result, return_value)
 
     @redis_test
@@ -1701,7 +1722,8 @@ class RedisPoolTest(unittest.TestCase):
             self.assertIsInstance(script, Script)
 
             # Run script
-            result = yield from script.run()
+            scriptreply = yield from script.run()
+            result = yield from scriptreply.return_value()
             self.assertEqual(result, 100)
 
         self.loop.run_until_complete(test())

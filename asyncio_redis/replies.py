@@ -206,3 +206,46 @@ class PubSubReply:
 
     def __repr__(self):
         return 'PubSubReply(channel=%r, value=%r)' % (self.channel, self.value)
+
+
+class EvalScriptReply:
+    """
+    :func:`~asyncio_redis.RedisProtocol.evalsha` reply.
+
+    Lua scripts can return strings/bytes (NativeType), but also ints, lists or
+    even nested data structures.
+    """
+    def __init__(self, protocol, value):
+        self._protocol = protocol
+        self._value = value
+
+    @asyncio.coroutine
+    def return_value(self):
+        """
+        Coroutine that returns a Python representation of the script's return
+        value.
+        """
+        from asyncio_redis.protocol import MultiBulkReply
+
+        @asyncio.coroutine
+        def decode(obj):
+            if isinstance(obj, int):
+                return obj
+
+            elif isinstance(obj, bytes):
+                return self._protocol.decode_to_native(self._value)
+
+            elif isinstance(obj, MultiBulkReply):
+                # Unpack MultiBulkReply recursively as Python list.
+                result = []
+                for f in obj:
+                    item = yield from f
+                    result.append((yield from decode(item)))
+                return result
+
+            else:
+                # Nonetype, or decoded bytes.
+                return obj
+
+        return (yield from decode(self._value))
+

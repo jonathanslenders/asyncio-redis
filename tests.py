@@ -108,6 +108,7 @@ class RedisProtocolTest(unittest.TestCase):
 
     @redis_test
     def test_extended_set(self, transport, protocol):
+        yield from protocol.delete([u'my_key', u'other_key'])
         # set with expire only if not exists
         value = yield from protocol.set(u'my_key', u'my_value',
                                         expire=10, not_exists=True)

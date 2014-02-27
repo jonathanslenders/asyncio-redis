@@ -20,7 +20,7 @@ if __name__ == '__main__':
 
         # Print published values in a while/true loop.
         while True:
-            reply = yield from subscriber.get_next_published()
+            reply = yield from subscriber.next_published()
             print('Received: ', repr(reply.value), 'on channel', reply.channel)
 
     loop.run_until_complete(run())

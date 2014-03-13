@@ -1056,7 +1056,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             yield from protocol.set('key', 'value', expire=1, only_if_not_exists=True)
 
         This will send: ``SET key value EX 1 NX`` at the network.
-        To set value, set key expire in ms, and only if key exists:
+        To set value and its expiration in milliseconds, but only if key already exists:
 
         ::
 

@@ -111,24 +111,24 @@ class RedisProtocolTest(unittest.TestCase):
         yield from protocol.delete([u'my_key', u'other_key'])
         # set with expire only if not exists
         value = yield from protocol.set(u'my_key', u'my_value',
-                                        expire=10, not_exists=True)
+                                        expire=10, only_if_not_exists=True)
         self.assertEqual(value, StatusReply('OK'))
         value = yield from protocol.ttl(u'my_key')
         self.assertIn(value, (10, 9))
 
         # check NX flag for SET command
         value = yield from protocol.set(u'my_key', u'my_value',
-                                        expire=10, not_exists=True)
+                                        expire=10, only_if_not_exists=True)
         self.assertIsNone(value)
 
         # check XX flag for SET command
-        value = yield from protocol.set(u'other_key', 'some_value', exists=True)
+        value = yield from protocol.set(u'other_key', 'some_value', only_if_exists=True)
 
         self.assertIsNone(value)
 
         # set with pexpire only if key exists
         value = yield from protocol.set(u'my_key', u'other_value',
-                                        pexpire=20000, exists=True)
+                                        pexpire=20000, only_if_exists=True)
         self.assertEqual(value, StatusReply('OK'))
 
         value = yield from protocol.get(u'my_key')

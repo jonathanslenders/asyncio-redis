@@ -1039,7 +1039,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     @_query_command
     def set(self, key:NativeType, value:NativeType,
             expire:(int, NoneType)=None, pexpire:(int, NoneType)=None,
-            not_exists:bool=False, exists:bool=False) -> (StatusReply, NoneType):
+            only_if_not_exists:bool=False, only_if_exists:bool=False) -> (StatusReply, NoneType):
         """
         Set the string value of a key
 
@@ -1049,12 +1049,18 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             result = yield from protocol.get('key')
             assert result == 'value'
 
-            To set value and set key expire, and only if key not exists:
-            yield from protocol.set('key', 'value', expire=1, not_exists=True)
-            >>> SET key value EX 1 NX
+        To set a value and its expiration, only if key not exists, do:
 
-            To set value, set key expire in ms, and only if key exists:
-            yield from protocol.set('key', 'value', pexpire=1000, exists=True)
+        ::
+
+            yield from protocol.set('key', 'value', expire=1, only_if_not_exists=True)
+
+        This will send: ``SET key value EX 1 NX`` at the network.
+        To set value, set key expire in ms, and only if key exists:
+
+        ::
+
+            yield from protocol.set('key', 'value', pexpire=1000, only_if_exists=True)
         """
         params = [
             b'set',
@@ -1062,14 +1068,14 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             self.encode_from_native(value)
         ]
         if expire is not None:
-            params.extend((b'ex', self.encode_from_native(str(expire))))
+            params.extend((b'ex', self._encode_int(expire)))
         if pexpire is not None:
-            params.extend((b'px', self.encode_from_native(str(pexpire))))
-        if not_exists and exists:
-            raise ValueError("not_exists and exists cannot be true simultaniously")
-        if not_exists:
+            params.extend((b'px', self._encode_int(pexpire)))
+        if only_if_not_exists and only_if_exists:
+            raise ValueError("only_if_not_exists and only_if_exists cannot be true simultaniously")
+        if only_if_not_exists:
             params.append(b'nx')
-        if exists:
+        if only_if_exists:
             params.append(b'xx')
 
         return self._query(*params)

@@ -44,7 +44,7 @@ import subprocess
 import unittest
 import os
 
-PORT = int(os.environ['REDIS_PORT'])
+PORT = int(os.environ.get('REDIS_PORT', 6379))
 
 
 @asyncio.coroutine

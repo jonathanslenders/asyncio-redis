@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import asyncio
-import signal
 import logging
 import types
 
@@ -1921,7 +1920,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                         *map(self.encode_from_native, keys + args))
 
             return result
-        except ErrorReply as e:
+        except ErrorReply:
             raise ScriptKilledError
 
     @_query_command

@@ -16,7 +16,7 @@ class Cursor:
     """
     def __init__(self, name, scanfunc):
         self._queue = deque()
-        self._cursor = cursor = 0
+        self._cursor = 0
         self._name = name
         self._scanfunc = scanfunc
         self._done = False

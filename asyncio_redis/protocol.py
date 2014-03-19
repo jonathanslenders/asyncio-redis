@@ -926,10 +926,9 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         if result[0] == 'message':
             channel, value = result[1], result[2]
             yield from self._subscription._messages_queue.put(PubSubReply(channel, value))
-        else:
-            # In case of 'subscribe'/'unsubscribe', we already converted the
-            # MultiBulkReply to a list, so we just hand over the list.
-            self._push_answer(result)
+
+        # We can safely ignore 'subscribe'/'unsubscribe' replies at this point,
+        # they don't contain anything really useful.
 
     # Redis operations.
 
@@ -1681,43 +1680,45 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         self._subscription = subscription
         return subscription
 
-    @_query_command
+    @_command
     def _subscribe(self, channels:ListOf(NativeType)) -> NoneType:
         """ Listen for messages published to the given channels """
         self._pubsub_channels |= set(channels)
         return self._pubsub_method('subscribe', channels)
 
-    @_query_command
+    @_command
     def _unsubscribe(self, channels:ListOf(NativeType)) -> NoneType:
         """ Stop listening for messages posted to the given channels """
         self._pubsub_channels -= set(channels)
         return self._pubsub_method('unsubscribe', channels)
 
-    @_query_command
+    @_command
     def _psubscribe(self, patterns:ListOf(NativeType)) -> NoneType:
         """ Listen for messages published to channels matching the given patterns """
         self._pubsub_patterns |= set(patterns)
         return self._pubsub_method('psubscribe', patterns)
 
-    @_query_command
+    @_command
     def _punsubscribe(self, patterns:ListOf(NativeType)) -> NoneType:
         """ Stop listening for messages posted to channels matching the given patterns """
         self._pubsub_patterns -= set(channels)
         return self._pubsub_method('punsubscribe', patterns)
 
+    @asyncio.coroutine
     def _pubsub_method(self, method, params):
         if not self._in_pubsub:
             raise Error('Cannot call pubsub methods without calling start_subscribe')
 
         # Send
-        result = yield from self._query(method.encode('ascii'), *map(self.encode_from_native, params))
+        self._send_command([method.encode('ascii')] + list(map(self.encode_from_native, params)))
 
-        # Note that in pubsub mode, this reply is processed by
-        # '_handle_pubsub_multibulk_reply', the result is directly unpacked as
-        # a list, so `result` here is a list.
-
-        # Returns something like [ 'subscribe', 'our_channel', 1]
-        assert result[0] == method
+        # Note that we can't use `self._query` here. The reason is that one
+        # subscribe/unsubscribe command returns a separate answer for every
+        # parameter. It doesn't fit in the same model of all the other queries
+        # where one query puts a Future on the queue that is replied with the
+        # incoming answer.
+        # Redis returns something like [ 'subscribe', 'channel_name', 1] for
+        # each parameter, but we can safely ignore those replies that.
 
     @_query_command
     def publish(self, channel:NativeType, message:NativeType) -> int:

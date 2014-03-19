@@ -756,14 +756,11 @@ class RedisProtocolTest(unittest.TestCase):
             # Subscribe
             transport2, protocol2 = yield from connect(self.loop)
 
-            # Subscribe
             self.assertEqual(protocol2.in_pubsub, False)
             subscription = yield from protocol2.start_subscribe()
             self.assertIsInstance(subscription, Subscription)
             self.assertEqual(protocol2.in_pubsub, True)
             yield from subscription.subscribe([u'our_channel'])
-            #self.assertEqual(repr(value), u"SubscribeReply(channel='our_channel')")
-            #self.assertEqual(value.channel, u'our_channel')
 
             value = yield from subscription.next_published()
             self.assertIsInstance(value, PubSubReply)
@@ -812,6 +809,47 @@ class RedisProtocolTest(unittest.TestCase):
             # Test pubsub numpat
             result = yield from protocol.pubsub_numpat()
             self.assertIsInstance(result, int)
+
+        yield from asyncio.sleep(.5)
+        yield from sender()
+        yield from f
+
+    @redis_test
+    def test_pubsub_many(self, transport, protocol):
+        """ Create a listener that listens to several channels. """
+        @asyncio.coroutine
+        def listener():
+            # Subscribe
+            transport2, protocol2 = yield from connect(self.loop)
+
+            self.assertEqual(protocol2.in_pubsub, False)
+            subscription = yield from protocol2.start_subscribe()
+            yield from subscription.subscribe(['channel1', 'channel2'])
+            yield from subscription.subscribe(['channel3', 'channel4'])
+
+            results = []
+            for i in range(4):
+                results.append((yield from subscription.next_published()))
+
+            self.assertEqual(results, [
+                    PubSubReply('channel1', 'message1'),
+                    PubSubReply('channel2', 'message2'),
+                    PubSubReply('channel3', 'message3'),
+                    PubSubReply('channel4', 'message4'),
+                ])
+
+        f = asyncio.Task(listener())
+
+        @asyncio.coroutine
+        def sender():
+            # Should not be received
+            yield from protocol.publish('channel5', 'message5')
+
+            # These for should be received.
+            yield from protocol.publish('channel1', 'message1')
+            yield from protocol.publish('channel2', 'message2')
+            yield from protocol.publish('channel3', 'message3')
+            yield from protocol.publish('channel4', 'message4')
 
         yield from asyncio.sleep(.5)
         yield from sender()

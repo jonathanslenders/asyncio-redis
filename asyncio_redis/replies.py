@@ -206,6 +206,9 @@ class PubSubReply:
     def __repr__(self):
         return 'PubSubReply(channel=%r, value=%r)' % (self.channel, self.value)
 
+    def __eq__(self, other):
+        return self._channel == other._channel and self._value == other._value
+
 
 class EvalScriptReply:
     """

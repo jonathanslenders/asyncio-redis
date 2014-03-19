@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
-from asyncio import test_utils
 from asyncio.futures import Future
-from asyncio.protocols import SubprocessProtocol
 from asyncio.tasks import gather
 
 from asyncio_redis import (
@@ -34,17 +32,15 @@ from asyncio_redis.replies import (
         StatusReply,
         ZRangeReply,
 )
-from asyncio_redis.cursors import Cursor, SetCursor, DictCursor, ZCursor
-from asyncio_redis.encoders import BytesEncoder, UTF8Encoder
-from threading import Thread
+from asyncio_redis.cursors import Cursor
+from asyncio_redis.encoders import BytesEncoder
 from time import sleep
 
 import asyncio
-import subprocess
 import unittest
 import os
 
-PORT = int(os.environ['REDIS_PORT'])
+PORT = int(os.environ.get('REDIS_PORT', 6379))
 
 
 @asyncio.coroutine
@@ -215,7 +211,7 @@ class RedisProtocolTest(unittest.TestCase):
         value = yield from protocol.strlen(u'my_key2')
         self.assertEqual(value, 0)
 
-        with self.assertRaises(ErrorReply) as e:
+        with self.assertRaises(ErrorReply):
             yield from protocol.strlen(u'my_key3')
         # Redis exception: b'ERR Operation against a key holding the wrong kind of value')
 
@@ -229,7 +225,7 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertEqual(value, u'aaabbb')
 
     @redis_test
-    def test_exists_and_delete(self, transport, protocol):
+    def test_exists_and_delete2(self, transport, protocol):
         # Exists
         value = yield from protocol.exists(u'unknown_key')
         self.assertEqual(value, False)
@@ -1301,7 +1297,7 @@ class RedisProtocolTest(unittest.TestCase):
         yield from protocol.set(u'my_key', u'a')
 
         transaction = yield from protocol.multi()
-        f = yield from transaction.set(u'my_key', 'b')
+        yield from transaction.set(u'my_key', 'b')
 
         # Discard
         result = yield from transaction.discard()
@@ -1649,7 +1645,7 @@ class RedisPoolTest(unittest.TestCase):
 
             # Wait for ever. (This blocking pop doesn't return.)
             yield from connection.delete([ 'unknown-key' ])
-            f = asyncio.Task(connection.blpop(['unknown-key']))
+            asyncio.Task(connection.blpop(['unknown-key']))
             yield from asyncio.sleep(.1) # Sleep to make sure that the above coroutine started executing.
 
             # Run command in other thread.
@@ -1687,7 +1683,7 @@ class RedisPoolTest(unittest.TestCase):
             @asyncio.coroutine
             def source():
                 for i in range(0, 5):
-                    result = yield from connection.rpush('my-list', [str(i)])
+                    yield from connection.rpush('my-list', [str(i)])
                     yield from asyncio.sleep(.5)
 
             # Run both coroutines.
@@ -1779,7 +1775,7 @@ class RedisPoolTest(unittest.TestCase):
 
             t1 = yield from connection.multi()
             t2 = yield from connection.multi()
-            t3 = yield from connection.multi()
+            yield from connection.multi()
 
             # Fourth transaction should fail. (Pool is full)
             with self.assertRaises(NoAvailableConnectionsInPoolError) as e:
@@ -1787,8 +1783,8 @@ class RedisPoolTest(unittest.TestCase):
             self.assertIn('No available connections in the pool', e.exception.args[0])
 
             # Run commands in transaction
-            f1 = yield from t1.set(u'key', u'value')
-            f2 = yield from t2.set(u'key2', u'value2')
+            yield from t1.set(u'key', u'value')
+            yield from t2.set(u'key2', u'value2')
 
             # Commit.
             yield from t1.exec()
@@ -1817,8 +1813,8 @@ class RedisPoolTest(unittest.TestCase):
 
             # Test
             t = yield from connection.multi(watch=['other_key'])
-            f = yield from t.set(u'key', u'value')
-            f2 = yield from t.set(u'other_key', u'my_value')
+            yield from t.set(u'key', u'value')
+            yield from t.set(u'other_key', u'my_value')
             yield from t.exec()
 
             # Check
@@ -1891,7 +1887,7 @@ class RedisPoolTest(unittest.TestCase):
             self.assertEqual(protocol.is_connected, False)
 
             # Test get/set
-            with self.assertRaises(NotConnectedError) as e:
+            with self.assertRaises(NotConnectedError):
                 yield from protocol.set('key', 'value')
 
         self.loop.run_until_complete(test())
@@ -1914,6 +1910,7 @@ class RedisPoolTest(unittest.TestCase):
             self.assertIn('No available connections in the pool: size=1, in_use=0, connected=0', e.exception.args[0])
 
         self.loop.run_until_complete(test())
+
 
 if __name__ == '__main__':
     unittest.main()

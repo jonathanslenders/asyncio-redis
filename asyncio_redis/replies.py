@@ -1,5 +1,4 @@
 import asyncio
-from asyncio.queues import Queue
 from asyncio.tasks import gather
 
 __all__ = (

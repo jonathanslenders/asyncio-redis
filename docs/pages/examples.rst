@@ -79,7 +79,7 @@ with :func:`exec <asyncio_redis.Transaction.exec>`.
 
         # Run commands in transaction (they return future objects)
         f1 = yield from transaction.set('key', 'value')
-        f1 = yield from transaction.set('another_key', 'another_value')
+        f2 = yield from transaction.set('another_key', 'another_value')
 
         # Commit transaction
         yield from transaction.exec()

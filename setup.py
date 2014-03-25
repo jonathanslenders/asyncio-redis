@@ -3,6 +3,12 @@ try:
     from setuptools import setup
 except ImportError:
     from distutils.core import setup
+import sys
+
+if sys.version_info >= (3, 4):
+    install_requires = []
+else:
+    install_requires = ['asyncio']
 
 setup(
         name='asyncio_redis',
@@ -14,5 +20,5 @@ setup(
         description='PEP 3156 implementation of the redis protocol.',
         long_description=open("README.rst").read(),
         packages=['asyncio_redis'],
-        install_requires = [ 'asyncio' ],
+        install_requires=install_requires,
 )

@@ -565,6 +565,18 @@ class RedisProtocolTest(unittest.TestCase):
         yield from f
 
     @redis_test
+    def test_blocking_timeout(self, transport, protocol):
+        yield from protocol.delete([u'from'])
+        yield from protocol.delete([u'to'])
+
+        @asyncio.coroutine
+        def brpoplpush():
+            value = yield from protocol.brpoplpush(u'from', u'to', 1)
+            self.assertIsNone(value)
+        f = asyncio.Task(brpoplpush())
+        yield from f
+
+    @redis_test
     def test_linsert(self, transport, protocol):
         # Prepare
         yield from protocol.delete([ u'my_list' ])

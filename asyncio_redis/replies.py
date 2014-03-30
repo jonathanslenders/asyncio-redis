@@ -155,20 +155,6 @@ class BlockingPopReply:
         return 'BlockingPopReply(list_name=%r, value=%r)' % (self.list_name, self.value)
 
 
-class BlockingPopPushReply:
-    """ :func:`~asyncio_redis.RedisProtocol.brpoplpush` reply """
-    def __init__(self, value):
-        self._value = value
-
-    @property
-    def value(self):
-        """ Popped value """
-        return self._value
-
-    def __repr__(self):
-        return 'BlockingPopPushReply(value=%r)' % (self.value, )
-
-
 class ConfigPairReply:
     """ :func:`~asyncio_redis.RedisProtocol.config_get` reply. """
     def __init__(self, parameter, value):

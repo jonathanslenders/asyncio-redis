@@ -21,7 +21,6 @@ from asyncio_redis import (
 )
 from asyncio_redis.replies import (
         BlockingPopReply,
-        BlockingPopPushReply,
         ClientListReply,
         ConfigPairReply,
         DictReply,
@@ -559,9 +558,7 @@ class RedisProtocolTest(unittest.TestCase):
         @asyncio.coroutine
         def brpoplpush():
             result = yield from protocol.brpoplpush(u'from', u'to')
-            self.assertIsInstance(result, BlockingPopPushReply)
-            self.assertEqual(result.value, u'my_value')
-            self.assertEqual(repr(result), u"BlockingPopPushReply(value='my_value')")
+            self.assertEqual(result, u'my_value')
         f = asyncio.Task(brpoplpush())
 
         transport2, protocol2 = yield from connect(self.loop)

@@ -25,7 +25,6 @@ from .exceptions import (
 )
 from .replies import (
         BlockingPopReply,
-        BlockingPopPushReply,
         ClientListReply,
         ConfigPairReply,
         DictReply,
@@ -196,7 +195,6 @@ class PostProcessors:
                 str: cls.bytes_to_str,
                 bool: cls.int_to_bool,
                 BlockingPopReply: cls.multibulk_as_blocking_pop_reply,
-                BlockingPopPushReply: cls.bytes_to_blocking_poppush_reply,
                 ZRangeReply: cls.multibulk_as_zrangereply,
 
                 StatusReply: None,
@@ -275,14 +273,6 @@ class PostProcessors:
             assert isinstance(result, MultiBulkReply)
             list_name, value = yield from ListReply(result).aslist()
             return BlockingPopReply(list_name, value)
-
-    @asyncio.coroutine
-    def bytes_to_blocking_poppush_reply(protocol, result):
-        if result is None:
-            raise TimeoutError('Timeout in brpoplpush')
-        else:
-            assert isinstance(result, bytes)
-            return BlockingPopPushReply(protocol.decode_to_native(result))
 
     @asyncio.coroutine
     def multibulk_as_configpair(protocol, result):
@@ -486,7 +476,6 @@ class CommandCreator:
             try:
                 return {
                     BlockingPopReply: ":class:`BlockingPopReply <asyncio_redis.replies.BlockingPopReply>`",
-                    BlockingPopPushReply: ":class:`BlockingPopPushReply <asyncio_redis.replies.BlockingPopPushReply>`",
                     ConfigPairReply: ":class:`ConfigPairReply <asyncio_redis.replies.ConfigPairReply>`",
                     DictReply: ":class:`DictReply <asyncio_redis.replies.DictReply>`",
                     InfoReply: ":class:`InfoReply <asyncio_redis.replies.InfoReply>`",
@@ -1426,11 +1415,18 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     def _blocking_pop(self, command, keys, timeout:int=0):
         return self._query(command, *([ self.encode_from_native(k) for k in keys ] + [self._encode_int(timeout)]), set_blocking=True)
 
-    @_query_command
-    def brpoplpush(self, source:NativeType, destination:NativeType, timeout:int=0) -> BlockingPopPushReply:
+    @_command
+    @asyncio.coroutine
+    def brpoplpush(self, source:NativeType, destination:NativeType, timeout:int=0) -> NativeType:
         """ Pop a value from a list, push it to another list and return it; or block until one is available """
-        return self._query(b'brpoplpush', self.encode_from_native(source), self.encode_from_native(destination),
+        result = yield from self._query(b'brpoplpush', self.encode_from_native(source), self.encode_from_native(destination),
                     self._encode_int(timeout), set_blocking=True)
+
+        if result is None:
+            raise TimeoutError('Timeout in brpoplpush')
+        else:
+            assert isinstance(result, bytes)
+            return self.decode_to_native(result)
 
     @_query_command
     def lset(self, key:NativeType, index:int, value:NativeType) -> StatusReply:

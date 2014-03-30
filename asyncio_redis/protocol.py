@@ -519,7 +519,7 @@ class CommandCreator:
                     # XXX: Because of circulare references, we cannot use the real types here.
                     'Transaction': ":class:`asyncio_redis.Transaction`",
                     'Subscription': ":class:`asyncio_redis.Subscription`",
-                    'Script': ":returns: :class:`asyncio_redis.Script`",
+                    'Script': ":class:`~asyncio_redis.Script`",
                 }[type_]
             except KeyError:
                 if isinstance(type_, ListOf):
@@ -1683,7 +1683,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                 result = yield from subscription.next_published()
                 print(result)
 
-        :returns: :class:`asyncio_redis.Subscription`
+        :returns: :class:`~asyncio_redis.Subscription`
         """
         # (Make coroutine. @asyncio.coroutine breaks documentation. It uses
         # @functools.wraps to make a generator for this function. But _command
@@ -1914,7 +1914,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     def script_kill(self) -> StatusReply:
         """
         Kill the script currently in execution.  This raises
-        :class:`~asyncio_redis.scripts.NoRunningScriptError` when there are no
+        :class:`~asyncio_redis.exceptions.NoRunningScriptError` when there are no
         scrips running.
         """
         try:
@@ -1936,7 +1936,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         The return type/value depends on the script.
 
         This will raise a :class:`~asyncio_redis.exceptions.ScriptKilledError`
-        exception when the script was killed.
+        exception if the script was killed.
         """
         if not keys: keys = []
         if not args: args = []
@@ -2170,6 +2170,9 @@ class Script:
 
             # If the LUA script returns something, retrieve the return value
             result = yield from script_reply.return_value()
+
+        This will raise a :class:`~asyncio_redis.exceptions.ScriptKilledError`
+        exception if the script was killed.
         """
         return self.get_evalsha_func()(self.sha, keys, args)
 

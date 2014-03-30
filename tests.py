@@ -569,12 +569,17 @@ class RedisProtocolTest(unittest.TestCase):
         yield from protocol.delete([u'from'])
         yield from protocol.delete([u'to'])
 
-        @asyncio.coroutine
-        def brpoplpush():
-            value = yield from protocol.brpoplpush(u'from', u'to', 1)
-            self.assertIsNone(value)
-        f = asyncio.Task(brpoplpush())
-        yield from f
+        # brpoplpush
+        result = yield from protocol.brpoplpush(u'from', u'to', 1)
+        self.assertIsNone(result)
+
+        # brpop
+        result = yield from protocol.brpop([u'from'], 1)
+        self.assertIsNone(result)
+
+        # blpop
+        result = yield from protocol.blpop([u'from'], 1)
+        self.assertIsNone(result)
 
     @redis_test
     def test_linsert(self, transport, protocol):

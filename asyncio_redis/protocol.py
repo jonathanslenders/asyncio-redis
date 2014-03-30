@@ -193,7 +193,7 @@ class PostProcessors:
                 ClientListReply: cls.bytes_to_clientlist,
                 str: cls.bytes_to_str,
                 bool: cls.int_to_bool,
-                BlockingPopReply: cls.multibulk_as_blocking_pop_reply,
+                (BlockingPopReply, NoneType): cls.multibulk_as_blocking_pop_reply_or_none,
                 ZRangeReply: cls.multibulk_as_zrangereply,
 
                 StatusReply: None,
@@ -265,10 +265,13 @@ class PostProcessors:
         return ZRangeReply(result)
 
     @asyncio.coroutine
-    def multibulk_as_blocking_pop_reply(protocol, result):
-        assert isinstance(result, MultiBulkReply)
-        list_name, value = yield from ListReply(result).aslist()
-        return BlockingPopReply(list_name, value)
+    def multibulk_as_blocking_pop_reply_or_none(protocol, result):
+        if result is None:
+            return result
+        else:
+            assert isinstance(result, MultiBulkReply)
+            list_name, value = yield from ListReply(result).aslist()
+            return BlockingPopReply(list_name, value)
 
     @asyncio.coroutine
     def multibulk_as_configpair(protocol, result):
@@ -1395,12 +1398,12 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return self._query(b'lindex', self.encode_from_native(key), self._encode_int(index))
 
     @_query_command
-    def blpop(self, keys:ListOf(NativeType), timeout:int=0) -> BlockingPopReply:
+    def blpop(self, keys:ListOf(NativeType), timeout:int=0) -> (BlockingPopReply, NoneType):
         """ Remove and get the first element in a list, or block until one is available. """
         return self._blocking_pop(b'blpop', keys, timeout=timeout)
 
     @_query_command
-    def brpop(self, keys:ListOf(NativeType), timeout:int=0) -> BlockingPopReply:
+    def brpop(self, keys:ListOf(NativeType), timeout:int=0) -> (BlockingPopReply, NoneType):
         """ Remove and get the last element in a list, or block until one is available. """
         return self._blocking_pop(b'brpop', keys, timeout=timeout)
 

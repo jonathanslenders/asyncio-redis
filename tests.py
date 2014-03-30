@@ -21,6 +21,7 @@ from asyncio_redis import (
 )
 from asyncio_redis.replies import (
         BlockingPopReply,
+        BlockingPopPushReply,
         ClientListReply,
         ConfigPairReply,
         DictReply,
@@ -32,6 +33,7 @@ from asyncio_redis.replies import (
         StatusReply,
         ZRangeReply,
 )
+from asyncio_redis.exceptions import TimeoutError
 from asyncio_redis.cursors import Cursor
 from asyncio_redis.encoders import BytesEncoder
 from time import sleep
@@ -556,8 +558,10 @@ class RedisProtocolTest(unittest.TestCase):
 
         @asyncio.coroutine
         def brpoplpush():
-            value = yield from protocol.brpoplpush(u'from', u'to')
-            self.assertEqual(value, u'my_value')
+            result = yield from protocol.brpoplpush(u'from', u'to')
+            self.assertIsInstance(result, BlockingPopPushReply)
+            self.assertEqual(result.value, u'my_value')
+            self.assertEqual(repr(result), u"BlockingPopPushReply(value='my_value')")
         f = asyncio.Task(brpoplpush())
 
         transport2, protocol2 = yield from connect(self.loop)
@@ -570,16 +574,19 @@ class RedisProtocolTest(unittest.TestCase):
         yield from protocol.delete([u'to'])
 
         # brpoplpush
-        result = yield from protocol.brpoplpush(u'from', u'to', 1)
-        self.assertIsNone(result)
+        with self.assertRaises(TimeoutError) as e:
+            result = yield from protocol.brpoplpush(u'from', u'to', 1)
+        self.assertIn('Timeout in brpoplpush', e.exception.args[0])
 
         # brpop
-        result = yield from protocol.brpop([u'from'], 1)
-        self.assertIsNone(result)
+        with self.assertRaises(TimeoutError) as e:
+            result = yield from protocol.brpop([u'from'], 1)
+        self.assertIn('Timeout in blocking pop', e.exception.args[0])
 
         # blpop
-        result = yield from protocol.blpop([u'from'], 1)
-        self.assertIsNone(result)
+        with self.assertRaises(TimeoutError) as e:
+            result = yield from protocol.blpop([u'from'], 1)
+        self.assertIn('Timeout in blocking pop', e.exception.args[0])
 
     @redis_test
     def test_linsert(self, transport, protocol):

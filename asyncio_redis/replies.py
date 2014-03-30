@@ -129,7 +129,7 @@ class ListReply:
         return gather(* list(self._result))
 
     def __repr__(self):
-        return 'ListReply(length=%r)' % (self._result.count)
+        return 'ListReply(length=%r)' % (self._result.count, )
 
 
 class BlockingPopReply:
@@ -153,6 +153,20 @@ class BlockingPopReply:
 
     def __repr__(self):
         return 'BlockingPopReply(list_name=%r, value=%r)' % (self.list_name, self.value)
+
+
+class BlockingPopPushReply:
+    """ :func:`~asyncio_redis.RedisProtocol.brpoplpush` reply """
+    def __init__(self, value):
+        self._value = value
+
+    @property
+    def value(self):
+        """ Popped value """
+        return self._value
+
+    def __repr__(self):
+        return 'BlockingPopPushReply(value=%r)' % (self.value, )
 
 
 class ConfigPairReply:

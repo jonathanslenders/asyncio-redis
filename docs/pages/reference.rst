@@ -68,6 +68,9 @@ Command replies
 .. autoclass:: asyncio_redis.replies.BlockingPopReply
     :members:
 
+.. autoclass:: asyncio_redis.replies.BlockingPopPushReply
+    :members:
+
 .. autoclass:: asyncio_redis.replies.InfoReply
     :members:
 
@@ -109,3 +112,9 @@ Utils
 .. autoclass:: asyncio_redis.ZAggregate
     :members:
 
+
+Exceptions
+----------
+
+.. autoclass:: asyncio_redis.exceptions.TimeoutError
+    :members:

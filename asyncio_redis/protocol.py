@@ -14,16 +14,18 @@ from inspect import getfullargspec, formatargspec, getcallargs
 
 from .encoders import BaseEncoder, UTF8Encoder
 from .exceptions import (
+        ConnectionLostError,
         Error,
         ErrorReply,
-        TransactionError,
-        NotConnectedError,
-        ConnectionLostError,
         NoRunningScriptError,
+        NotConnectedError,
         ScriptKilledError,
+        TimeoutError,
+        TransactionError,
 )
 from .replies import (
         BlockingPopReply,
+        BlockingPopPushReply,
         ClientListReply,
         ConfigPairReply,
         DictReply,
@@ -193,7 +195,8 @@ class PostProcessors:
                 ClientListReply: cls.bytes_to_clientlist,
                 str: cls.bytes_to_str,
                 bool: cls.int_to_bool,
-                (BlockingPopReply, NoneType): cls.multibulk_as_blocking_pop_reply_or_none,
+                BlockingPopReply: cls.multibulk_as_blocking_pop_reply,
+                BlockingPopPushReply: cls.bytes_to_blocking_poppush_reply,
                 ZRangeReply: cls.multibulk_as_zrangereply,
 
                 StatusReply: None,
@@ -265,13 +268,21 @@ class PostProcessors:
         return ZRangeReply(result)
 
     @asyncio.coroutine
-    def multibulk_as_blocking_pop_reply_or_none(protocol, result):
+    def multibulk_as_blocking_pop_reply(protocol, result):
         if result is None:
-            return result
+            raise TimeoutError('Timeout in blocking pop')
         else:
             assert isinstance(result, MultiBulkReply)
             list_name, value = yield from ListReply(result).aslist()
             return BlockingPopReply(list_name, value)
+
+    @asyncio.coroutine
+    def bytes_to_blocking_poppush_reply(protocol, result):
+        if result is None:
+            raise TimeoutError('Timeout in brpoplpush')
+        else:
+            assert isinstance(result, bytes)
+            return BlockingPopPushReply(protocol.decode_to_native(result))
 
     @asyncio.coroutine
     def multibulk_as_configpair(protocol, result):
@@ -475,6 +486,7 @@ class CommandCreator:
             try:
                 return {
                     BlockingPopReply: ":class:`BlockingPopReply <asyncio_redis.replies.BlockingPopReply>`",
+                    BlockingPopPushReply: ":class:`BlockingPopPushReply <asyncio_redis.replies.BlockingPopPushReply>`",
                     ConfigPairReply: ":class:`ConfigPairReply <asyncio_redis.replies.ConfigPairReply>`",
                     DictReply: ":class:`DictReply <asyncio_redis.replies.DictReply>`",
                     InfoReply: ":class:`InfoReply <asyncio_redis.replies.InfoReply>`",
@@ -1398,20 +1410,24 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return self._query(b'lindex', self.encode_from_native(key), self._encode_int(index))
 
     @_query_command
-    def blpop(self, keys:ListOf(NativeType), timeout:int=0) -> (BlockingPopReply, NoneType):
-        """ Remove and get the first element in a list, or block until one is available. """
+    def blpop(self, keys:ListOf(NativeType), timeout:int=0) -> BlockingPopReply:
+        """ Remove and get the first element in a list, or block until one is available.
+        This will raise :class:`~asyncio_redis.exceptions.TimeoutError` when
+        the timeout was exceeded and Redis returns `None`. """
         return self._blocking_pop(b'blpop', keys, timeout=timeout)
 
     @_query_command
-    def brpop(self, keys:ListOf(NativeType), timeout:int=0) -> (BlockingPopReply, NoneType):
-        """ Remove and get the last element in a list, or block until one is available. """
+    def brpop(self, keys:ListOf(NativeType), timeout:int=0) -> BlockingPopReply:
+        """ Remove and get the last element in a list, or block until one is available.
+        This will raise :class:`~asyncio_redis.exceptions.TimeoutError` when
+        the timeout was exceeded and Redis returns `None`. """
         return self._blocking_pop(b'brpop', keys, timeout=timeout)
 
     def _blocking_pop(self, command, keys, timeout:int=0):
         return self._query(command, *([ self.encode_from_native(k) for k in keys ] + [self._encode_int(timeout)]), set_blocking=True)
 
     @_query_command
-    def brpoplpush(self, source:NativeType, destination:NativeType, timeout:int=0) -> (NativeType, NoneType):
+    def brpoplpush(self, source:NativeType, destination:NativeType, timeout:int=0) -> BlockingPopPushReply:
         """ Pop a value from a list, push it to another list and return it; or block until one is available """
         return self._query(b'brpoplpush', self.encode_from_native(source), self.encode_from_native(destination),
                     self._encode_int(timeout), set_blocking=True)

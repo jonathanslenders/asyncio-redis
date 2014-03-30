@@ -6,6 +6,7 @@ __all__ = (
         'NoRunningScriptError',
         'NotConnectedError',
         'ScriptKilledError',
+        'TimeoutError',
         'TransactionError',
 )
 
@@ -30,6 +31,10 @@ class NotConnectedError(Error):
     """ Protocol is not connected. """
     def __init__(self, message='Not connected'):
         super().__init__(message)
+
+
+class TimeoutError(Error):
+    """ Timeout during blocking pop. """
 
 
 class ConnectionLostError(NotConnectedError):

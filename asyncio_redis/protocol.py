@@ -1408,7 +1408,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return self._query(command, *([ self.encode_from_native(k) for k in keys ] + [self._encode_int(timeout)]), set_blocking=True)
 
     @_query_command
-    def brpoplpush(self, source:NativeType, destination:NativeType, timeout:int=0) -> NativeType:
+    def brpoplpush(self, source:NativeType, destination:NativeType, timeout:int=0) -> (NativeType, NoneType):
         """ Pop a value from a list, push it to another list and return it; or block until one is available """
         return self._query(b'brpoplpush', self.encode_from_native(source), self.encode_from_native(destination),
                     self._encode_int(timeout), set_blocking=True)

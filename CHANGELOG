@@ -1,0 +1,18 @@
+CHANGELOG
+=========
+
+
+0.11.1: to be released.
+-----------------------
+
+New features:
+- Timeout support for blpop/brpop/brpoplpush
+- setup.py improved. Don't install asyncio on Python 3.4
+
+Backward incompatable changes:
+- brpoplpush now returns a BlockingPopPushReply
+
+
+0.10.1: 2014-03-19
+------------------
+No changelog before this point.

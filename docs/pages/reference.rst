@@ -116,5 +116,23 @@ Utils
 Exceptions
 ----------
 
+.. autoclass:: asyncio_redis.exceptions.TransactionError
+    :members:
+
+.. autoclass:: asyncio_redis.exceptions.NotConnectedError
+    :members:
+
 .. autoclass:: asyncio_redis.exceptions.TimeoutError
+    :members:
+
+.. autoclass:: asyncio_redis.exceptions.ConnectionLostError
+    :members:
+
+.. autoclass:: asyncio_redis.exceptions.NoAvailableConnectionsInPoolError
+    :members:
+
+.. autoclass:: asyncio_redis.exceptions.ScriptKilledError
+    :members:
+
+.. autoclass:: asyncio_redis.exceptions.NoRunningScriptError
     :members:

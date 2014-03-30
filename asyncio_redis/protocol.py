@@ -1912,7 +1912,11 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def script_kill(self) -> StatusReply:
-        """ Kill the script currently in execution. """
+        """
+        Kill the script currently in execution.  This raises
+        :class:`~asyncio_redis.scripts.NoRunningScriptError` when there are no
+        scrips running.
+        """
         try:
             return (yield from self._query(b'script', b'kill'))
         except ErrorReply as e:
@@ -1930,6 +1934,9 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         Scripts are cached on the server side using the SCRIPT LOAD command.
 
         The return type/value depends on the script.
+
+        This will raise a :class:`~asyncio_redis.exceptions.ScriptKilledError`
+        exception when the script was killed.
         """
         if not keys: keys = []
         if not args: args = []
@@ -2207,6 +2214,9 @@ class Transaction:
     def exec(self):
         """
         Execute transaction.
+
+        This can raise a :class:`~asyncio_redis.exceptions.TransactionError`
+        when the transaction fails.
         """
         return self._protocol._exec()
 

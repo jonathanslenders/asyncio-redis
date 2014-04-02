@@ -1158,7 +1158,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     @_query_command
     def move(self, key:NativeType, database:int) -> int:
         """ Move a key to another database """
-        return self._query(b'move', self.encode_from_native(key), self.encode_from_native(destination)) # TODO: test
+        return self._query(b'move', self.encode_from_native(key), self._encode_int(database)) # TODO: unittest
 
     @_query_command
     def rename(self, key:NativeType, newkey:NativeType) -> StatusReply:
@@ -1714,9 +1714,9 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return self._pubsub_method('psubscribe', patterns)
 
     @_command
-    def _punsubscribe(self, patterns:ListOf(NativeType)) -> NoneType:
+    def _punsubscribe(self, patterns:ListOf(NativeType)) -> NoneType: # XXX: unittest
         """ Stop listening for messages posted to channels matching the given patterns """
-        self._pubsub_patterns -= set(channels)
+        self._pubsub_patterns -= set(patterns)
         return self._pubsub_method('punsubscribe', patterns)
 
     @asyncio.coroutine

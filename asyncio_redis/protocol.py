@@ -4,7 +4,6 @@ import logging
 import types
 
 from asyncio.futures import Future
-from asyncio.log import logger
 from asyncio.queues import Queue
 from asyncio.streams import StreamReader
 
@@ -23,6 +22,7 @@ from .exceptions import (
         TimeoutError,
         TransactionError,
 )
+from .log import logger
 from .replies import (
         BlockingPopReply,
         ClientListReply,

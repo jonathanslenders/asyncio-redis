@@ -1,5 +1,5 @@
+from .log import logger
 from .protocol import RedisProtocol, _all_commands
-from asyncio.log import logger
 import asyncio
 import logging
 

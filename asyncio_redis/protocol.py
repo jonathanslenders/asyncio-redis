@@ -860,7 +860,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @asyncio.coroutine
     def _handle_item(self, cb):
-        c = yield from self._reader.read(1)
+        c = yield from self._reader.readexactly(1)
         if c:
             yield from self._line_received_handlers[c](cb)
         else:
@@ -889,7 +889,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             cb(None)
         else:
             # Read data
-            data = yield from self._reader.read(length)
+            data = yield from self._reader.readexactly(length)
             cb(data)
 
             # Ignore trailing newline.

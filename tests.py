@@ -1013,10 +1013,7 @@ class RedisProtocolTest(unittest.TestCase):
         result = yield from protocol.zrange('myzset')
         self.assertIsInstance(result, ZRangeReply)
 
-        etalon = [
-                {'key': 4.0},
-                {'key2': 5.0},
-                {'key3': 5.5} ]
+        etalon = [ ('key', 4.0), ('key2', 5.0), ('key3', 5.5) ]
         for i, f in enumerate(result): # Ordering matter
             d = yield from f
             self.assertEqual(d, etalon[i])
@@ -1034,10 +1031,7 @@ class RedisProtocolTest(unittest.TestCase):
 
         for f in result:
             d = yield from f
-
-            self.assertIn(d, [
-                {'key2': 5.0},
-                {'key3': 5.5} ])
+            self.assertIn(d, [ ('key2', 5.0), ('key3', 5.5) ])
 
         # Test zrangebyscore
         result = yield from protocol.zrangebyscore('myzset')
@@ -1100,10 +1094,7 @@ class RedisProtocolTest(unittest.TestCase):
         result = yield from protocol.zrevrange('myzset')
         self.assertIsInstance(result, ZRangeReply)
 
-        etalon = [
-            {'key3': 5.5},
-            {'key2': 5.0},
-            {'key': 4.0} ]
+        etalon = [ ('key3', 5.5), ('key2', 5.0), ('key', 4.0) ]
         for i, f in enumerate(result): # Ordering matter
             d = yield from f
             self.assertEqual(d, etalon[i])

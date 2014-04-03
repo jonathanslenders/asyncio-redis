@@ -30,7 +30,19 @@ class StatusReply:
 
 
 class DictReply:
-    """ Container for a dict reply. """
+    """
+    Container for a dict reply.
+
+    The content can be retrieved by calling
+    :func:`~asyncio_redis.replies.DictReply.asdict` which returns a Python
+    dictionary. Or by iterating over it:
+
+    ::
+
+        for f in dict_reply:
+            key, value = yield from f
+            print(key, value)
+    """
     def __init__(self, multibulk_reply):
         self._result = multibulk_reply
 
@@ -46,7 +58,7 @@ class DictReply:
             """ Coroutine which processes one item. """
             key, value = yield from gather(key_f, value_f)
             key, value = self._parse(key, value)
-            return { key: value }
+            return (key, value)
 
         while True:
             yield asyncio.Task(getter(next(i), next(i)))
@@ -54,12 +66,12 @@ class DictReply:
     @asyncio.coroutine
     def asdict(self):
         """
-        Return the result of a sorted set query as dictionary.
-        This is a mapping from the elements to their scores.
+        Return the result as a Python dictionary.
         """
         result = { }
         for f in self:
-            result.update((yield from f))
+            key, value = yield from f
+            result[key] = value
         return result
 
     def __repr__(self):

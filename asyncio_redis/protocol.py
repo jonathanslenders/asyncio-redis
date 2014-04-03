@@ -1493,15 +1493,15 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
         ::
 
-            result = yield protocol.zrevrange('myzset', start=10, stop=20)
-            my_dict = yield result.asdict()
+            my_dict = yield protocol.zrevrange_asdict('myzset', start=10, stop=20)
 
         or the following to retrieve it as a list of keys:
 
         ::
 
-            result = yield protocol.zrevrange('myzset', start=10, stop=20)
-            my_dict = yield result.aslist()
+            zrange_reply = yield protocol.zrevrange('myzset', start=10, stop=20)
+            my_dict = yield zrange_reply.aslist()
+
         """
         return self._query(b'zrevrange', self.encode_from_native(key),
                     self._encode_int(start), self._encode_int(stop), b'withscores')

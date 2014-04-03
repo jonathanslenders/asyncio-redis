@@ -1,9 +1,26 @@
 CHANGELOG
 =========
 
+0.12.1: 2014-04-03
+------------------
+
+New features:
+- _asdict suffixes for methods that have a ZRangeReply return-annotation.
+- Added ZREVRANGE
+
+Fixes:
+- Encoding of negative integers
+- Fixes in the MOVE and PUNSUBSCRIBE
+- Using separate logger
+- Fix when transmitting large replies over the network.
+
+Backward-incompatibilities:
+- Iterating through a DictReply or ZRangeReply now yields futures that return
+  (key, value) tuples instead of {key:value} dicts of one element. (This
+  behaviour was not really documented and it certainly is an improvement.)
 
 0.11.1: 2014-03-30
------------------------
+------------------
 
 New features:
 - Timeout support for blpop/brpop/brpoplpush

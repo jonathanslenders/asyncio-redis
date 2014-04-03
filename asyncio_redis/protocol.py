@@ -1484,6 +1484,29 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                     self._encode_int(start), self._encode_int(stop), b'withscores')
 
     @_query_command
+    def zrevrange(self, key:NativeType, start:int=0, stop:int=-1) -> ZRangeReply:
+        """
+        Return a range of members in a reversed sorted set, by index.
+
+        You can do the following to receive the slice of the sorted set as a
+        python dict (mapping the keys to their scores):
+
+        ::
+
+            result = yield protocol.zrevrange('myzset', start=10, stop=20)
+            my_dict = yield result.asdict()
+
+        or the following to retrieve it as a list of keys:
+
+        ::
+
+            result = yield protocol.zrevrange('myzset', start=10, stop=20)
+            my_dict = yield result.aslist()
+        """
+        return self._query(b'zrevrange', self.encode_from_native(key),
+                    self._encode_int(start), self._encode_int(stop), b'withscores')
+
+    @_query_command
     def zrangebyscore(self, key:NativeType,
                 min:ZScoreBoundary=ZScoreBoundary.MIN_VALUE,
                 max:ZScoreBoundary=ZScoreBoundary.MAX_VALUE) -> ZRangeReply:

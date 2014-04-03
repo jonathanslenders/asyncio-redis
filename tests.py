@@ -1021,6 +1021,18 @@ class RedisProtocolTest(unittest.TestCase):
                 {'key2': 5.0},
                 {'key3': 5.5} ])
 
+
+        # Test zrange with negative indexes
+        result = yield from protocol.zrange('myzset', -2, -1)
+        self.assertIsInstance(result, ZRangeReply)
+
+        for f in result:
+            d = yield from f
+
+            self.assertIn(d, [
+                {'key2': 5.0},
+                {'key3': 5.5} ])
+
         # Test zrangebyscore
         result = yield from protocol.zrangebyscore('myzset')
         self.assertEqual((yield from result.asdict()),

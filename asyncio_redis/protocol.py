@@ -229,7 +229,7 @@ class PostProcessors:
                 return (yield from result.asset())
             return '_asset', set, as_set
 
-        elif return_type == DictReply:
+        elif return_type in (DictReply, ZRangeReply):
             @asyncio.coroutine
             def as_dict(protocol, result):
                 result = yield from original_post_processor(protocol, result)

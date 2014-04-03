@@ -1013,11 +1013,22 @@ class RedisProtocolTest(unittest.TestCase):
         result = yield from protocol.zrange('myzset')
         self.assertIsInstance(result, ZRangeReply)
 
+        etalon = [
+                {'key': 4.0},
+                {'key2': 5.0},
+                {'key3': 5.5} ]
+        for i, f in enumerate(result): # Ordering matter
+            d = yield from f
+            self.assertEqual(d, etalon[i])
+
+        # Test zrange with negative indexes
+        result = yield from protocol.zrange('myzset', -2, -1)
+        self.assertIsInstance(result, ZRangeReply)
+
         for f in result:
             d = yield from f
 
             self.assertIn(d, [
-                {'key': 4.0},
                 {'key2': 5.0},
                 {'key3': 5.5} ])
 
@@ -1056,6 +1067,32 @@ class RedisProtocolTest(unittest.TestCase):
                         max=ZScoreBoundary(5.5, exclude_boundary=True))
         self.assertEqual((yield from result.asdict()),
                 { 'key': 4.0, 'key2': 5.0 })
+
+    @redis_test
+    def test_zrevrange(self, transport, protocol):
+        yield from protocol.delete([ 'myzset' ])
+
+        # Test zadd
+        result = yield from protocol.zadd('myzset', { 'key': 4, 'key2': 5, 'key3': 5.5 })
+        self.assertEqual(result, 3)
+
+        # Test zrevrange
+        result = yield from protocol.zrevrange('myzset')
+        self.assertIsInstance(result, ZRangeReply)
+        self.assertEqual(repr(result), u"ZRangeReply(length=3)")
+        self.assertEqual((yield from result.asdict()),
+                { 'key': 4.0, 'key2': 5.0, 'key3': 5.5 })
+
+        result = yield from protocol.zrevrange('myzset')
+        self.assertIsInstance(result, ZRangeReply)
+
+        etalon = [
+            {'key3': 5.5},
+            {'key2': 5.0},
+            {'key': 4.0} ]
+        for i, f in enumerate(result): # Ordering matter
+            d = yield from f
+            self.assertEqual(d, etalon[i])
 
     @redis_test
     def test_zset_zincrby(self, transport, protocol):

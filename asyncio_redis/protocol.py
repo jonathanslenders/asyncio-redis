@@ -702,7 +702,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         self.password = password
         self.db = db
         self._connection_lost_callback = connection_lost_callback
-        self._loop = loop
+        self._loop = loop or asyncio.get_event_loop()
 
         # Take encode / decode settings from encoder
         self.encode_from_native = encoder.encode_from_native

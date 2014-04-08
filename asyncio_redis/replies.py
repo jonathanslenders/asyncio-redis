@@ -56,7 +56,7 @@ class DictReply:
         @asyncio.coroutine
         def getter(key_f, value_f):
             """ Coroutine which processes one item. """
-            key, value = yield from gather(key_f, value_f)
+            key, value = yield from gather(key_f, value_f, loop=self._result._loop)
             key, value = self._parse(key, value)
             return (key, value)
 
@@ -109,7 +109,7 @@ class SetReply:
     @asyncio.coroutine
     def asset(self):
         """ Return the result as a Python ``set``.  """
-        result = yield from gather(* list(self._result))
+        result = yield from gather(* list(self._result), loop=self._result._loop)
         return set(result)
 
     def __repr__(self):
@@ -138,7 +138,7 @@ class ListReply:
 
     def aslist(self):
         """ Return the result as a Python ``list``. """
-        return gather(* list(self._result))
+        return gather(* list(self._result), loop=self._result._loop)
 
     def __repr__(self):
         return 'ListReply(length=%r)' % (self._result.count, )

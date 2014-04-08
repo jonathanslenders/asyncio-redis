@@ -61,7 +61,7 @@ class DictReply:
             return (key, value)
 
         while True:
-            yield asyncio.Task(getter(next(i), next(i)))
+            yield asyncio.async(getter(next(i), next(i)), loop=self._result._loop)
 
     @asyncio.coroutine
     def asdict(self):

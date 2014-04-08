@@ -40,7 +40,7 @@ class Connection:
 
         connection.host = host
         connection.port = port
-        connection._loop = loop
+        connection._loop = loop or asyncio.get_event_loop()
         connection._retry_interval = .5
 
         # Create protocol instance
@@ -49,7 +49,8 @@ class Connection:
                 asyncio.Task(connection._reconnect())
 
         # Create protocol instance
-        connection.protocol = RedisProtocol(password=password, db=db, encoder=encoder, connection_lost_callback=connection_lost)
+        connection.protocol = RedisProtocol(password=password, db=db, encoder=encoder,
+                        connection_lost_callback=connection_lost, loop=connection._loop)
 
         # Connect
         yield from connection._reconnect()
@@ -77,11 +78,10 @@ class Connection:
         """
         Set up Redis connection.
         """
-        loop = self._loop or asyncio.get_event_loop()
         while True:
             try:
                 logger.log(logging.INFO, 'Connecting to redis')
-                yield from loop.create_connection(lambda:self.protocol, self.host, self.port)
+                yield from self._loop.create_connection(lambda:self.protocol, self.host, self.port)
                 self._reset_retry_interval()
                 return
             except OSError:

@@ -2013,5 +2013,37 @@ class RedisPoolTest(unittest.TestCase):
         self.loop.run_until_complete(test())
 
 
+class NoGlobalLoopTest(unittest.TestCase):
+    """
+    If we set the global loop variable to None, everything should still work.
+    """
+    def test_no_global_loop(self):
+        old_loop = asyncio.get_event_loop()
+        try:
+            # Remove global loop and create a new one.
+            asyncio.set_event_loop(None)
+            new_loop = asyncio.new_event_loop()
+
+            # ** Run code on the new loop. **
+
+            # Create connection
+            connection = new_loop.run_until_complete(Connection.create(loop=new_loop))
+            self.assertIsInstance(connection, Connection)
+
+            # Delete keys
+            new_loop.run_until_complete(connection.delete(['key1', 'key2']))
+
+            # Get/set
+            new_loop.run_until_complete(connection.set('key1', 'value'))
+            result = new_loop.run_until_complete(connection.get('key1'))
+
+            # hmset/hmget (something that uses a MultiBulkReply)
+            new_loop.run_until_complete(connection.hmset('key2', { 'a': 'b', 'c': 'd' }))
+            result = new_loop.run_until_complete(connection.hgetall_asdict('key2'))
+            self.assertEqual(result, { 'a': 'b', 'c': 'd' })
+        finally:
+            asyncio.set_event_loop(old_loop)
+
+
 if __name__ == '__main__':
     unittest.main()

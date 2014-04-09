@@ -1,6 +1,13 @@
 CHANGELOG
 =========
 
+0.12.2: 2014-04-09
+------------------
+
+Fixes:
+- Passing a custom loop should now work everywhere. (Unit tests added.)
+
+
 0.12.1: 2014-04-03
 ------------------
 

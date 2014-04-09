@@ -13,7 +13,7 @@ else:
 setup(
         name='asyncio_redis',
         author='Jonathan Slenders',
-        version='0.12.1',
+        version='0.12.2',
         license='LICENSE.txt',
         url='https://github.com/jonathanslenders/asyncio-redis',
 

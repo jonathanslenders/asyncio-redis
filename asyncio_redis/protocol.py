@@ -103,8 +103,9 @@ class MultiBulkReply:
     """
     Container for a multi bulk reply.
     """
-    def __init__(self, protocol, count):
-        self.queue = Queue()
+    def __init__(self, protocol, count, loop=None):
+        self._loop = loop or asyncio.get_event_loop()
+        self.queue = Queue(loop=self._loop)
         self.protocol = protocol
         self.count = int(count)
 
@@ -141,7 +142,7 @@ class MultiBulkReply:
             #    f1 = next(multibulk)
             #    f2 = next(multibulk)
             #    r1, r2 = gather(f1, f2)
-            yield asyncio.async(auto_decode(f))
+            yield asyncio.async(auto_decode(f), loop=self._loop)
 
     def __repr__(self):
         return 'MultiBulkReply(protocol=%r, count=%r)' % (self.protocol, self.count)
@@ -562,7 +563,7 @@ class CommandCreator:
                 else:
                     typecheck_input(protocol_self, *a[1:], **kw)
                     future = yield from method(protocol_self, *a[1:], **kw)
-                    future2 = Future()
+                    future2 = Future(loop=protocol_self._loop)
 
                     # Typecheck the future when the result is available.
 
@@ -573,7 +574,7 @@ class CommandCreator:
                         typecheck_return(protocol_self, result)
                         future2.set_result(result)
 
-                    future.add_done_callback(lambda f: asyncio.async(done(f.result())))
+                    future.add_done_callback(lambda f: asyncio.async(done(f.result()), loop=protocol_self._loop))
 
                     return future2
 
@@ -689,7 +690,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                                 enabled.
     :type enable_typechecking: bool
     """
-    def __init__(self, password=None, db=0, encoder=None, connection_lost_callback=None, enable_typechecking=True):
+    def __init__(self, password=None, db=0, encoder=None, connection_lost_callback=None, enable_typechecking=True, loop=None):
         if encoder is None:
             encoder = UTF8Encoder()
 
@@ -701,6 +702,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         self.password = password
         self.db = db
         self._connection_lost_callback = connection_lost_callback
+        self._loop = loop or asyncio.get_event_loop()
 
         # Take encode / decode settings from encoder
         self.encode_from_native = encoder.encode_from_native
@@ -741,9 +743,9 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         self._pipelined_calls = set() # Set of all the pipelined calls.
 
         # Start parsing reader stream.
-        self._reader = StreamReader()
+        self._reader = StreamReader(loop=self._loop)
         self._reader.set_transport(transport)
-        self._reader_f = asyncio.async(self._reader_coroutine())
+        self._reader_f = asyncio.async(self._reader_coroutine(), loop=self._loop)
 
         @asyncio.coroutine
         def initialize():
@@ -762,7 +764,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                 if self._pubsub_patterns:
                     yield from self._psubscribe(self._subscription, list(self._pubsub_patterns))
 
-        asyncio.Task(initialize())
+        asyncio.async(initialize(), loop=self._loop)
 
     def data_received(self, data):
         """ Process data received from Redis server.  """
@@ -910,11 +912,11 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             cb(None)
             return
 
-        reply = MultiBulkReply(self, count)
+        reply = MultiBulkReply(self, count, loop=self._loop)
 
         # Return the empty queue immediately as an answer.
         if self._in_pubsub:
-            asyncio.async(self._handle_pubsub_multibulk_reply(reply))
+            asyncio.async(self._handle_pubsub_multibulk_reply(reply), loop=self._loop)
         else:
             cb(reply)
 
@@ -976,7 +978,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                 raise Error('Expected to receive QUEUED for query in transaction, received %r.' % result)
 
             # Return a future which will contain the result when it arrives.
-            f = Future()
+            f = Future(loop=self._loop)
             self._transaction_response_queue.append( (f, call) )
             return f
         else:
@@ -1012,7 +1014,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         self._pipelined_calls.add(call)
 
         # Add a new future to our answer queue.
-        answer_f = Future()
+        answer_f = Future(loop=self._loop)
         self._queue.append(answer_f)
 
         # Send command
@@ -2255,7 +2257,7 @@ class Subscription:
     """
     def __init__(self, protocol):
         self.protocol = protocol
-        self._messages_queue = Queue() # Pubsub queue
+        self._messages_queue = Queue(loop=protocol._loop) # Pubsub queue
 
     @wraps(RedisProtocol._subscribe)
     def subscribe(self, channels):

@@ -1657,6 +1657,26 @@ class RedisProtocolTest(unittest.TestCase):
         self.assertEqual(result3, {'a':'1', 'b':'2', 'c':'3'})
         self.assertIsInstance(result3, dict)
 
+    @redis_test
+    def test_cancellation(self, transport, protocol):
+        """ Test CancelledError: when a query gets cancelled. """
+        result = yield from protocol.delete(['key'])
+
+        # Start a coroutine that runs a blocking command for 3seconds
+        @asyncio.coroutine
+        def run():
+            result = yield from protocol.brpop(['key'], 3)
+        f = asyncio.async(run(), loop=self.loop)
+
+        # We cancel the coroutine before the answer arrives.
+        yield from asyncio.sleep(.5, loop=self.loop)
+        f.cancel()
+
+        # Now there's a cancelled future in protocol._queue, the
+        # protocol._push_answer function should notice that and ignore the
+        # incoming result from our `brpop` in this case.
+        result = yield from protocol.set('key', 'value')
+
 
 class RedisBytesProtocolTest(unittest.TestCase):
     def setUp(self):

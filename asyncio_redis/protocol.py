@@ -812,7 +812,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         # Raise exception on all waiting futures.
         while self._queue:
             f = self._queue.popleft()
-            f.set_exception(ConnectionLostError(exc))
+            if not f.cancelled():
+                f.set_exception(ConnectionLostError(exc))
 
         logger.log(logging.INFO, 'Redis connection lost')
 
@@ -994,6 +995,11 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
         if isinstance(answer, Exception):
             f.set_exception(answer)
+        elif f.cancelled():
+            # Received an answer from Redis, for a query which `Future` got
+            # already cancelled. Don't call set_result, that would raise an
+            # `InvalidStateError` otherwise.
+            pass
         else:
             f.set_result(answer)
 

@@ -46,7 +46,7 @@ class Connection:
         # Create protocol instance
         def connection_lost():
             if auto_reconnect:
-                asyncio.Task(connection._reconnect())
+                asyncio.async(connection._reconnect(), loop=connection._loop)
 
         # Create protocol instance
         connection.protocol = RedisProtocol(password=password, db=db, encoder=encoder,
@@ -89,7 +89,7 @@ class Connection:
                 self._increase_retry_interval()
                 interval = self._get_retry_interval()
                 logger.log(logging.INFO, 'Connecting to redis failed. Retrying in %i seconds' % interval)
-                yield from asyncio.sleep(interval)
+                yield from asyncio.sleep(interval, loop=self._loop)
 
     def __getattr__(self, name):
         # Only proxy commands.

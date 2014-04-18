@@ -1,6 +1,15 @@
 CHANGELOG
 =========
 
+0.12.3: 2014-04-18
+------------------
+
+Fixes:
+- Correctly handle CancelledError.
+- Passing of both host and port variables in unit tests.
+- Using the correct loop during reconnect in Connection.
+
+
 0.12.2: 2014-04-09
 ------------------
 

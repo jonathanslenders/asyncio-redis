@@ -24,13 +24,14 @@ class Pool:
     """
     @classmethod
     @asyncio.coroutine
-    def create(cls, host='localhost', port=6379, password=None, db=0, encoder=None, poolsize=1, auto_reconnect=True, loop=None):
+    def create(cls, host='localhost', port=6379, password=None, db=0,
+               encoder=None, poolsize=1, auto_reconnect=True, loop=None):
         """
         Create a new connection pool instance.
 
-        :param host: Address
+        :param host: Address, either host or unix domain socket path
         :type host: str
-        :param port: TCP port.
+        :param port: TCP port. If port is 0 then host assumed to be unix socket path
         :type port: int
         :param password: Redis database password
         :type password: bytes
@@ -53,8 +54,9 @@ class Pool:
         self._connections = []
 
         for i in range(poolsize):
-            connection = yield from Connection.create(host=host, port=port, password=password,
-                            db=db, encoder=encoder, auto_reconnect=auto_reconnect, loop=loop)
+            connection = yield from Connection.create(host=host, port=port,
+                            password=password, db=db, encoder=encoder,
+                            auto_reconnect=auto_reconnect, loop=loop)
             self._connections.append(connection)
 
         return self

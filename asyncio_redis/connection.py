@@ -20,11 +20,12 @@ class Connection:
     """
     @classmethod
     @asyncio.coroutine
-    def create(cls, host='localhost', port=6379, password=None, db=0, encoder=None, auto_reconnect=True, loop=None):
+    def create(cls, host='localhost', port=6379, password=None, db=0,
+               encoder=None, auto_reconnect=True, loop=None):
         """
-        :param host: Address
+        :param host: Address, either host or unix domain socket path
         :type host: str
-        :param port: TCP port.
+        :param port: TCP port. If port is 0 then host assumed to be unix socket path
         :type port: int
         :param password: Redis database password
         :type password: bytes
@@ -36,6 +37,7 @@ class Connection:
         :type auto_reconnect: bool
         :param loop: (optional) asyncio event loop.
         """
+        assert port >= 0, "Unexpected port value: %r" % (port, )
         connection = cls()
 
         connection.host = host
@@ -81,7 +83,10 @@ class Connection:
         while True:
             try:
                 logger.log(logging.INFO, 'Connecting to redis')
-                yield from self._loop.create_connection(lambda:self.protocol, self.host, self.port)
+                if self.port:
+                    yield from self._loop.create_connection(lambda: self.protocol, self.host, self.port)
+                else:
+                    yield from self._loop.create_unix_connection(lambda: self.protocol, self.host)
                 self._reset_retry_interval()
                 return
             except OSError:

@@ -35,7 +35,6 @@ from asyncio_redis.replies import (
 from asyncio_redis.exceptions import TimeoutError
 from asyncio_redis.cursors import Cursor
 from asyncio_redis.encoders import BytesEncoder
-from time import sleep
 
 import asyncio
 import unittest
@@ -77,12 +76,10 @@ def redis_test(function):
 
 class RedisProtocolTest(unittest.TestCase):
     def setUp(self):
-        #self.loop = test_utils.TestLoop()
         self.loop = asyncio.get_event_loop()
         self.protocol_class = RedisProtocol
 
     def tearDown(self):
-        #self.loop.close()
         pass
 
     @redis_test
@@ -1660,12 +1657,12 @@ class RedisProtocolTest(unittest.TestCase):
     @redis_test
     def test_cancellation(self, transport, protocol):
         """ Test CancelledError: when a query gets cancelled. """
-        result = yield from protocol.delete(['key'])
+        yield from protocol.delete(['key'])
 
         # Start a coroutine that runs a blocking command for 3seconds
         @asyncio.coroutine
         def run():
-            result = yield from protocol.brpop(['key'], 3)
+            yield from protocol.brpop(['key'], 3)
         f = asyncio.async(run(), loop=self.loop)
 
         # We cancel the coroutine before the answer arrives.
@@ -1675,7 +1672,7 @@ class RedisProtocolTest(unittest.TestCase):
         # Now there's a cancelled future in protocol._queue, the
         # protocol._push_answer function should notice that and ignore the
         # incoming result from our `brpop` in this case.
-        result = yield from protocol.set('key', 'value')
+        yield from protocol.set('key', 'value')
 
 
 class RedisBytesProtocolTest(unittest.TestCase):

@@ -44,10 +44,11 @@ class Connection:
         connection.port = port
         connection._loop = loop or asyncio.get_event_loop()
         connection._retry_interval = .5
+        connection._closed = False
 
         # Create protocol instance
         def connection_lost():
-            if auto_reconnect:
+            if auto_reconnect and not connection._closed:
                 asyncio.async(connection._reconnect(), loop=connection._loop)
 
         # Create protocol instance
@@ -105,3 +106,9 @@ class Connection:
 
     def __repr__(self):
         return 'Connection(host=%r, port=%r)' % (self.host, self.port)
+
+    def __del__(self):
+        """ When this object is cleaned up. Close the transport. """
+        self._closed = True
+        if self.protocol.transport:
+            self.protocol.transport.close()

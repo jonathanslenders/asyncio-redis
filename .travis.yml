@@ -14,9 +14,6 @@ before_install:
 install:
   - "pip install . --use-mirrors"
 
-before_script:
-  - /sbin/start-stop-daemon --start --quiet --pidfile /tmp/redis-unix.pid --make-pidfile --background --exec `which redis-server` --  --unixsocket /tmp/asyncio
-
 script: ./tests.py
 
 env:

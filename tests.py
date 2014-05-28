@@ -42,12 +42,20 @@ import os
 
 PORT = int(os.environ.get('REDIS_PORT', 6379))
 HOST = os.environ.get('REDIS_HOST', 'localhost')
+START_REDIS_SERVER = bool(os.environ.get('START_REDIS_SERVER', False))
 
 
 @asyncio.coroutine
 def connect(loop, protocol=RedisProtocol):
-    transport, protocol = yield from loop.create_connection(lambda: protocol(loop=loop), HOST, PORT)
-    return transport, protocol
+    """ Connect to redis server. Return transport/protocol pair. """
+    if PORT:
+        transport, protocol = yield from loop.create_connection(
+                lambda: protocol(loop=loop), HOST, PORT)
+        return transport, protocol
+    else:
+        transport, protocol = yield from loop.create_unix_connection(
+                lambda: protocol(loop=loop), HOST)
+        return transport, protocol
 
 
 def redis_test(function):
@@ -2097,5 +2105,31 @@ class RedisBytesWithoutGlobalEventloopProtocolTest(RedisBytesProtocolTest):
         asyncio.set_event_loop(self._old_loop)
 
 
+def _start_redis_server(loop):
+    print('Running Redis server REDIS_HOST=%r REDIS_PORT=%r...' % (HOST, PORT))
+
+    redis_srv = loop.run_until_complete(
+                asyncio.create_subprocess_exec(
+                    'redis-server',
+                    '--port', str(PORT),
+                    ('--bind' if PORT else '--unixsocket'), HOST,
+                    '--maxclients', '100',
+                    '--save', '""',
+                    '--loglevel', 'warning',
+                    loop=loop,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL))
+    loop.run_until_complete(asyncio.sleep(.05, loop=loop))
+    return redis_srv
+
+
 if __name__ == '__main__':
-    unittest.main()
+    if START_REDIS_SERVER:
+        redis_srv = _start_redis_server(asyncio.get_event_loop())
+
+    try:
+        unittest.main()
+    finally:
+        if START_REDIS_SERVER:
+            redis_srv.terminate()
+

@@ -80,6 +80,11 @@ def redis_test(function):
             finally:
                 transport.close()
 
+            # Give a little time to clean up and close everything after each
+            # test before we close the loop. (We can get a "ResourceWarning,
+            # unclosed socket" in some rare cases otherwise.)
+            yield from asyncio.sleep(.1, loop=self.loop)
+
         self.loop.run_until_complete(c())
     return wrapper
 

@@ -73,10 +73,12 @@ def redis_test(function):
             transport, protocol = yield from connect(self.loop, self.protocol_class)
 
             # Run test
-            yield from function(self, transport, protocol)
+            try:
+                yield from function(self, transport, protocol)
 
             # Close connection
-            transport.close()
+            finally:
+                transport.close()
 
         self.loop.run_until_complete(c())
     return wrapper
@@ -561,6 +563,8 @@ class RedisProtocolTest(unittest.TestCase):
         yield from protocol2.rpush(u'my_list', [u'value2'])
         yield from f
 
+        transport2.close()
+
     @redis_test
     def test_brpoplpush(self, transport, protocol):
         yield from protocol.delete([ u'from' ])
@@ -576,6 +580,8 @@ class RedisProtocolTest(unittest.TestCase):
         transport2, protocol2 = yield from connect(self.loop)
         yield from protocol2.rpush(u'from', [u'my_value'])
         yield from f
+
+        transport2.close()
 
     @redis_test
     def test_blocking_timeout(self, transport, protocol):
@@ -806,6 +812,8 @@ class RedisProtocolTest(unittest.TestCase):
             self.assertEqual(value.value, u'message2')
             self.assertEqual(repr(value), u"PubSubReply(channel='our_channel', value='message2')")
 
+            return transport2
+
         f = asyncio.async(listener(), loop=self.loop)
 
         @asyncio.coroutine
@@ -845,7 +853,8 @@ class RedisProtocolTest(unittest.TestCase):
 
         yield from asyncio.sleep(.5, loop=self.loop)
         yield from sender()
-        yield from f
+        transport2 = yield from f
+        transport2.close()
 
     @redis_test
     def test_pubsub_many(self, transport, protocol):
@@ -870,6 +879,8 @@ class RedisProtocolTest(unittest.TestCase):
                     PubSubReply('channel3', 'message3'),
                     PubSubReply('channel4', 'message4'),
                 ])
+
+            transport2.close()
 
         f = asyncio.async(listener(), loop=self.loop)
 
@@ -952,6 +963,8 @@ class RedisProtocolTest(unittest.TestCase):
         result = yield from bytes_protocol.get(b'result')
         self.assertIsInstance(result, bytes)
         self.assertEqual(result, bytes((~a % 256, ~a % 256, ~a % 256)))
+
+        bytes_transport.close()
 
     @redis_test
     def test_setbit(self, transport, protocol):
@@ -1343,6 +1356,8 @@ class RedisProtocolTest(unittest.TestCase):
             with self.assertRaises(ScriptKilledError):
                 yield from script.run()
 
+            transport.close()
+
         # (start script)
         asyncio.async(run_while_true(), loop=self.loop)
         yield from asyncio.sleep(.5, loop=self.loop)
@@ -1457,6 +1472,7 @@ class RedisProtocolTest(unittest.TestCase):
         transport2, protocol2 = yield from connect(self.loop, lambda **kw: RedisProtocol(password='newpassword', **kw))
         result = yield from protocol2.set('my-key', 'value')
         self.assertIsInstance(result, StatusReply)
+        transport2.close()
 
         # Reset password
         result = yield from protocol.config_set('requirepass', '')
@@ -1718,6 +1734,8 @@ class NoTypeCheckingTest(unittest.TestCase):
             # Setting values should still work.
             result = yield from protocol.set(b'key', b'value')
             self.assertEqual(result, StatusReply('OK'))
+
+            transport.close()
 
         loop.run_until_complete(test())
 
@@ -2023,6 +2041,8 @@ class RedisPoolTest(unittest.TestCase):
             with self.assertRaises(NotConnectedError):
                 yield from protocol.set('key', 'value')
 
+            transport.close()
+
         self.loop.run_until_complete(test())
 
         # Test connection lost in connection pool.
@@ -2088,6 +2108,7 @@ class RedisProtocolWithoutGlobalEventloopTest(RedisProtocolTest):
         self.loop = asyncio.new_event_loop()
 
     def tearDown(self):
+        self.loop.close()
         asyncio.set_event_loop(self._old_loop)
 
 
@@ -2102,6 +2123,7 @@ class RedisBytesWithoutGlobalEventloopProtocolTest(RedisBytesProtocolTest):
         self.loop = asyncio.new_event_loop()
 
     def tearDown(self):
+        self.loop.close()
         asyncio.set_event_loop(self._old_loop)
 
 

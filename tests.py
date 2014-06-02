@@ -2,6 +2,7 @@
 
 from asyncio.futures import Future
 from asyncio.tasks import gather
+from asyncio.test_utils import run_briefly
 
 from asyncio_redis import (
         Connection,
@@ -32,13 +33,15 @@ from asyncio_redis.replies import (
         StatusReply,
         ZRangeReply,
 )
-from asyncio_redis.exceptions import TimeoutError
+from asyncio_redis.exceptions import TimeoutError, ConnectionLostError
 from asyncio_redis.cursors import Cursor
 from asyncio_redis.encoders import BytesEncoder
 
 import asyncio
 import unittest
 import os
+import gc
+import warnings
 
 PORT = int(os.environ.get('REDIS_PORT', 6379))
 HOST = os.environ.get('REDIS_HOST', 'localhost')
@@ -80,22 +83,20 @@ def redis_test(function):
             finally:
                 transport.close()
 
-            # Give a little time to clean up and close everything after each
-            # test before we close the loop. (We can get a "ResourceWarning,
-            # unclosed socket" in some rare cases otherwise.)
-            yield from asyncio.sleep(.1, loop=self.loop)
-
         self.loop.run_until_complete(c())
     return wrapper
 
 
-class RedisProtocolTest(unittest.TestCase):
+class TestCase(unittest.TestCase):
+    def tearDown(self):
+        # Collect garbage on tearDown. (This can print ResourceWarnings.)
+        result = gc.collect()
+
+
+class RedisProtocolTest(TestCase):
     def setUp(self):
         self.loop = asyncio.get_event_loop()
         self.protocol_class = RedisProtocol
-
-    def tearDown(self):
-        pass
 
     @redis_test
     def test_ping(self, transport, protocol):
@@ -1364,11 +1365,14 @@ class RedisProtocolTest(unittest.TestCase):
             transport.close()
 
         # (start script)
-        asyncio.async(run_while_true(), loop=self.loop)
+        f = asyncio.async(run_while_true(), loop=self.loop)
         yield from asyncio.sleep(.5, loop=self.loop)
 
         result = yield from protocol.script_kill()
         self.assertEqual(result, StatusReply('OK'))
+
+        # Wait for the other coroutine to finish.
+        yield from f
 
     @redis_test
     def test_transaction(self, transport, protocol):
@@ -1704,7 +1708,7 @@ class RedisProtocolTest(unittest.TestCase):
         yield from protocol.set('key', 'value')
 
 
-class RedisBytesProtocolTest(unittest.TestCase):
+class RedisBytesProtocolTest(TestCase):
     def setUp(self):
         self.loop = asyncio.get_event_loop()
         self.protocol_class = lambda **kw: RedisProtocol(encoder=BytesEncoder(), **kw)
@@ -1724,7 +1728,7 @@ class RedisBytesProtocolTest(unittest.TestCase):
         self.assertEqual(result, b'value')
 
 
-class NoTypeCheckingTest(unittest.TestCase):
+class NoTypeCheckingTest(TestCase):
     def test_protocol(self):
         # Override protocol, disabling type checking.
         def factory(**kw):
@@ -1745,7 +1749,7 @@ class NoTypeCheckingTest(unittest.TestCase):
         loop.run_until_complete(test())
 
 
-class RedisConnectionTest(unittest.TestCase):
+class RedisConnectionTest(TestCase):
     """ Test connection class. """
     def setUp(self):
         self.loop = asyncio.get_event_loop()
@@ -1762,10 +1766,12 @@ class RedisConnectionTest(unittest.TestCase):
             result = yield from connection.get('key')
             self.assertEqual(result, 'value')
 
+            connection.close()
+
         self.loop.run_until_complete(test())
 
 
-class RedisPoolTest(unittest.TestCase):
+class RedisPoolTest(TestCase):
     """ Test connection pooling. """
     def setUp(self):
         self.loop = asyncio.get_event_loop()
@@ -1786,6 +1792,8 @@ class RedisPoolTest(unittest.TestCase):
             # Test default poolsize
             self.assertEqual(connection.poolsize, 1)
 
+            connection.close()
+
         self.loop.run_until_complete(test())
 
     def test_connection_in_use(self):
@@ -1801,7 +1809,7 @@ class RedisPoolTest(unittest.TestCase):
 
             # Wait for ever. (This blocking pop doesn't return.)
             yield from connection.delete([ 'unknown-key' ])
-            asyncio.async(connection.blpop(['unknown-key']), loop=self.loop)
+            f = asyncio.async(connection.blpop(['unknown-key']), loop=self.loop)
             yield from asyncio.sleep(.1, loop=self.loop) # Sleep to make sure that the above coroutine started executing.
 
             # Run command in other thread.
@@ -1810,6 +1818,12 @@ class RedisPoolTest(unittest.TestCase):
             self.assertIn('No available connections in the pool', e.exception.args[0])
 
             self.assertEqual(connection.connections_in_use, 1)
+
+            connection.close()
+
+            # Consume this future (which now contains ConnectionLostError)
+            with self.assertRaises(ConnectionLostError):
+                yield from f
 
         self.loop.run_until_complete(test())
 
@@ -1850,6 +1864,8 @@ class RedisPoolTest(unittest.TestCase):
             # Test results.
             self.assertEqual(results, [ str(i) for i in range(0, 5) ])
 
+            connection.close()
+
         self.loop.run_until_complete(test())
 
     def test_select_db(self):
@@ -1873,6 +1889,9 @@ class RedisPoolTest(unittest.TestCase):
             self.assertEqual(r1, 'A')
             self.assertEqual(r2, 'B')
 
+            for c in [ c1, c2, c3, c4]:
+                c.close()
+
         self.loop.run_until_complete(test())
 
     def test_in_use_flag(self):
@@ -1890,9 +1909,10 @@ class RedisPoolTest(unittest.TestCase):
             def sink(i):
                 the_list, result = yield from connection.blpop(['my-list-%i' % i])
 
+            futures = []
             for i in range(0, 10):
                 self.assertEqual(connection.connections_in_use, i)
-                asyncio.async(sink(i), loop=self.loop)
+                futures.append(asyncio.async(sink(i), loop=self.loop))
                 yield from asyncio.sleep(.1, loop=self.loop) # Sleep to make sure that the above coroutine started executing.
 
             # One more blocking call should fail.
@@ -1900,6 +1920,12 @@ class RedisPoolTest(unittest.TestCase):
                 yield from connection.delete([ 'my-list-one-more' ])
                 yield from connection.blpop(['my-list-one-more'])
             self.assertIn('No available connections in the pool', e.exception.args[0])
+
+            connection.close()
+
+            # Consume this futures (which now contain ConnectionLostError)
+            with self.assertRaises(ConnectionLostError):
+                yield from asyncio.gather(*futures)
 
         self.loop.run_until_complete(test())
 
@@ -1917,6 +1943,8 @@ class RedisPoolTest(unittest.TestCase):
             scriptreply = yield from script.run()
             result = yield from scriptreply.return_value()
             self.assertEqual(result, 100)
+
+            connection.close()
 
         self.loop.run_until_complete(test())
 
@@ -1953,6 +1981,8 @@ class RedisPoolTest(unittest.TestCase):
             self.assertEqual(result1, u'value')
             self.assertEqual(result2, u'value2')
 
+            connection.close()
+
         self.loop.run_until_complete(test())
 
     def test_watch(self):
@@ -1979,6 +2009,8 @@ class RedisPoolTest(unittest.TestCase):
             result = yield from connection.get(u'other_key')
             self.assertEqual(result, u'my_value')
 
+            connection.close()
+
         self.loop.run_until_complete(test())
 
         # Test using the watched key outside the transaction.
@@ -2002,6 +2034,8 @@ class RedisPoolTest(unittest.TestCase):
             result = yield from connection.get(u'other_key')
             self.assertEqual(result, u'other_value')
 
+            connection.close()
+
         self.loop.run_until_complete(test())
 
     def test_connection_reconnect(self):
@@ -2021,6 +2055,8 @@ class RedisPoolTest(unittest.TestCase):
 
             # Test get/set
             yield from connection.set('key', 'value')
+
+            connection.close()
 
         self.loop.run_until_complete(test())
 
@@ -2067,10 +2103,12 @@ class RedisPoolTest(unittest.TestCase):
                 yield from connection.set('key', 'value')
             self.assertIn('No available connections in the pool: size=1, in_use=0, connected=0', e.exception.args[0])
 
+            connection.close()
+
         self.loop.run_until_complete(test())
 
 
-class NoGlobalLoopTest(unittest.TestCase):
+class NoGlobalLoopTest(TestCase):
     """
     If we set the global loop variable to None, everything should still work.
     """
@@ -2085,20 +2123,28 @@ class NoGlobalLoopTest(unittest.TestCase):
 
             # Create connection
             connection = new_loop.run_until_complete(Connection.create(host=HOST, port=PORT, loop=new_loop))
+
             self.assertIsInstance(connection, Connection)
+            try:
+                # Delete keys
+                new_loop.run_until_complete(connection.delete(['key1', 'key2']))
 
-            # Delete keys
-            new_loop.run_until_complete(connection.delete(['key1', 'key2']))
+                # Get/set
+                new_loop.run_until_complete(connection.set('key1', 'value'))
+                result = new_loop.run_until_complete(connection.get('key1'))
+                self.assertEqual(result, 'value')
 
-            # Get/set
-            new_loop.run_until_complete(connection.set('key1', 'value'))
-            result = new_loop.run_until_complete(connection.get('key1'))
-
-            # hmset/hmget (something that uses a MultiBulkReply)
-            new_loop.run_until_complete(connection.hmset('key2', { 'a': 'b', 'c': 'd' }))
-            result = new_loop.run_until_complete(connection.hgetall_asdict('key2'))
-            self.assertEqual(result, { 'a': 'b', 'c': 'd' })
+                # hmset/hmget (something that uses a MultiBulkReply)
+                new_loop.run_until_complete(connection.hmset('key2', { 'a': 'b', 'c': 'd' }))
+                result = new_loop.run_until_complete(connection.hgetall_asdict('key2'))
+                self.assertEqual(result, { 'a': 'b', 'c': 'd' })
+            finally:
+                connection.close()
         finally:
+            # Run loop briefly until socket has been closed. (call_soon behind the scenes.)
+            run_briefly(new_loop)
+
+            new_loop.close()
             asyncio.set_event_loop(old_loop)
 
 
@@ -2115,6 +2161,7 @@ class RedisProtocolWithoutGlobalEventloopTest(RedisProtocolTest):
     def tearDown(self):
         self.loop.close()
         asyncio.set_event_loop(self._old_loop)
+        super().tearDown()
 
 
 class RedisBytesWithoutGlobalEventloopProtocolTest(RedisBytesProtocolTest):
@@ -2130,6 +2177,7 @@ class RedisBytesWithoutGlobalEventloopProtocolTest(RedisBytesProtocolTest):
     def tearDown(self):
         self.loop.close()
         asyncio.set_event_loop(self._old_loop)
+        super().tearDown()
 
 
 def _start_redis_server(loop):

@@ -126,3 +126,7 @@ class Pool:
 
         # Return a new script instead that runs it on any connection of the pool.
         return Script(script.sha, script.code, lambda: self.evalsha)
+
+    def close(self):
+        for c in self._connections:
+            c.close()

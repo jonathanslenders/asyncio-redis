@@ -25,6 +25,9 @@ command of the protocol can be called directly at the connection.
         # Set a key
         yield from connection.set('my_key', 'my_value')
 
+        # When finished, close the connection.
+        connection.close()
+
 See :ref:`the reference <redis-reference>` to learn more about the other Redis
 commands.
 
@@ -51,6 +54,9 @@ commands.
 
         # Set a key
         yield from connection.set('my_key', 'my_value')
+
+        # When finished, close the connection pool.
+        connection.close()
 
 
 Transactions
@@ -88,6 +94,9 @@ with :func:`exec <asyncio_redis.Transaction.exec>`.
         result1 = yield from f1
         result2 = yield from f2
 
+        # When finished, close the connection pool.
+        connection.close()
+
 
 It's recommended to use a large enough poolsize. A connection will be occupied
 as long as there's a transaction running in there.
@@ -121,6 +130,9 @@ the :class:`Connection <asyncio_redis.Connection>` class or through the :class:`
         while True:
             reply = yield from subscriber.next_published()
             print('Received: ', repr(reply.value), 'on channel', reply.channel)
+
+        # When finished, close the connection.
+        connection.close()
 
 
 LUA Scripting
@@ -159,6 +171,9 @@ function -- which can be used to register a LUA script -- returns a
         result = yield from script_reply.return_value()
         print(result) # prints 2 * 5
 
+        # When finished, close the connection.
+        connection.close()
+
 
 Raw bytes or UTF-8
 ------------------
@@ -184,6 +199,9 @@ connection, pool or protocol.
 
         # Set a key
         yield from connection.set(b'my_key', b'my_value')
+
+        # When finished, close the connection.
+        connection.close()
 
 
 Scanning for keys

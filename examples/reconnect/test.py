@@ -17,13 +17,16 @@ if __name__ == '__main__':
     def run():
         connection = yield from asyncio_redis.Connection.create(host='localhost', port=6379)
 
-        while True:
-            yield from asyncio.sleep(.5)
+        try:
+            while True:
+                yield from asyncio.sleep(.5)
 
-            try:
-                # Try to send message
-                yield from connection.publish('our-channel', 'message')
-            except Exception as e:
-                print ('errero', repr(e))
+                try:
+                    # Try to send message
+                    yield from connection.publish('our-channel', 'message')
+                except Exception as e:
+                    print ('errero', repr(e))
+        finally:
+            connection.close()
 
     loop.run_until_complete(run())

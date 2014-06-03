@@ -72,6 +72,9 @@ connection.
         # Set a key
         yield from connection.set('my_key', 'my_value')
 
+        # When finished, close the connection.
+        connection.close()
+
 
 Connection pooling
 ------------------
@@ -93,6 +96,9 @@ connection will be used for new commands.
 
         # Set a key
         yield from connection.set('my_key', 'my_value')
+
+        # When finished, close the connection pool.
+        connection.close()
 
 
 Transactions example
@@ -122,6 +128,8 @@ Transactions example
         result1 = yield from f1
         result2 = yield from f2
 
+        # When finished, close the connection pool.
+        connection.close()
 
 It's recommended to use a large enough poolsize. A connection will be occupied
 as long as there's a transaction running in there.
@@ -150,6 +158,9 @@ Pubsub example
         while True:
             reply = yield from subscriber.next_published()
             print('Received: ', repr(reply.value), 'on channel', reply.channel)
+
+        # When finished, close the connection.
+        connection.close()
 
 
 LUA Scripting example
@@ -182,6 +193,9 @@ LUA Scripting example
         result = yield from script_reply.return_value()
         print(result) # prints 2 * 5
 
+        # When finished, close the connection.
+        connection.close()
+
 
 Example using the Protocol class
 --------------------------------
@@ -205,6 +219,9 @@ Example using the Protocol class
         # Get a key
         result = yield from protocol.get('my_key')
         print(result)
+
+        # Close transport when finished.
+        transport.close()
 
     if __name__ == '__main__':
         asyncio.get_event_loop().run_until_complete(example())

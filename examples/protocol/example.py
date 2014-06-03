@@ -21,4 +21,6 @@ if __name__ == '__main__':
         # Print result
         print ('Succeeded', result == 'value')
 
+        transport.close()
+
     loop.run_until_complete(run())

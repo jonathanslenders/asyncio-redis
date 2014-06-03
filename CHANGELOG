@@ -1,6 +1,19 @@
 CHANGELOG
 =========
 
+0.12.5: 2014-06-03
+------------------
+
+Fixes:
+- Circular reference between `Connection` and `Protocol` was never cleaned up
+  because of __del__.
+- Memory leaks in unit tests were fixed.
+
+Backward-incompatibilities:
+- Connection is not closed anymore in __del__, like in version 0.12.4, but
+  instead the `Connection` and `Pool` classes got an explicit close method.
+
+
 0.12.4: 2014-05-28
 ------------------
 

@@ -115,7 +115,9 @@ class Connection:
         return self._closed
 
     def close(self):
-        """ When this object is cleaned up. Close the transport. """
+        """
+        Close the connection transport.
+        """
         self._auto_reconnect = False
         if self.protocol.transport:
             self.protocol.transport.close()

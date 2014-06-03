@@ -128,5 +128,10 @@ class Pool:
         return Script(script.sha, script.code, lambda: self.evalsha)
 
     def close(self):
+        """
+        Close all the connections in the pool.
+        """
         for c in self._connections:
             c.close()
+
+        self._connections = []

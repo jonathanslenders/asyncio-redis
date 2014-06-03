@@ -45,14 +45,14 @@ class Connection:
         connection._loop = loop or asyncio.get_event_loop()
         connection._retry_interval = .5
         connection._closed = False
+        connection._closing = False
 
         connection._auto_reconnect = auto_reconnect
 
         # Create protocol instance
         def connection_lost():
-            if connection._auto_reconnect and not connection._closed:
+            if connection._auto_reconnect and not connection._closing:
                 asyncio.async(connection._reconnect(), loop=connection._loop)
-            connection._closed = True
 
         # Create protocol instance
         connection.protocol = RedisProtocol(password=password, db=db, encoder=encoder,
@@ -110,14 +110,11 @@ class Connection:
     def __repr__(self):
         return 'Connection(host=%r, port=%r)' % (self.host, self.port)
 
-    @property
-    def closed(self):
-        return self._closed
-
     def close(self):
         """
         Close the connection transport.
         """
-        self._auto_reconnect = False
+        self._closing = True
+
         if self.protocol.transport:
             self.protocol.transport.close()

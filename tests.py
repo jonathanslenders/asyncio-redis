@@ -1760,6 +1760,7 @@ class RedisConnectionTest(TestCase):
             # Create connection
             connection = yield from Connection.create(host=HOST, port=PORT)
             self.assertEqual(repr(connection), "Connection(host=%r, port=%r)" % (HOST, PORT))
+            self.assertEqual(connection._closing, False)
 
             # Test get/set
             yield from connection.set('key', 'value')
@@ -1767,6 +1768,9 @@ class RedisConnectionTest(TestCase):
             self.assertEqual(result, 'value')
 
             connection.close()
+
+            # Test closing flag
+            self.assertEqual(connection._closing, True)
 
         self.loop.run_until_complete(test())
 
@@ -2048,13 +2052,17 @@ class RedisPoolTest(TestCase):
             connection = yield from Pool.create(host=HOST, port=PORT, poolsize=1)
             yield from connection.set('key', 'value')
 
-            transport = connection._connections[0].transport
-            transport.close()
+            # Try the reconnect cycle several times. (Be sure that the
+            # `connection_lost` callback doesn't set variables that avoid
+            # reconnection a second time.)
+            for i in range(3):
+                transport = connection._connections[0].transport
+                transport.close()
 
-            yield from asyncio.sleep(1, loop=self.loop) # Give asyncio time to reconnect.
+                yield from asyncio.sleep(1, loop=self.loop) # Give asyncio time to reconnect.
 
-            # Test get/set
-            yield from connection.set('key', 'value')
+                # Test get/set
+                yield from connection.set('key', 'value')
 
             connection.close()
 

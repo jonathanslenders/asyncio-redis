@@ -2379,7 +2379,12 @@ class HiRedisProtocol(RedisProtocol, metaclass=_RedisProtocolMeta):
             cb(None)
             return
         reply = self._parse_multi_bulk_from_list(result)
-        cb(reply)
+        # Return the empty queue immediately as an answer.
+        if self._in_pubsub:
+            asyncio.async(self._handle_pubsub_multibulk_reply(reply),
+                          loop=self._loop)
+        else:
+            cb(reply)
 
     def _parse_multi_bulk_from_list(self, data):
         """ Resursively constructs MultyBulkReply from list structure

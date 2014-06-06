@@ -7,6 +7,11 @@ from asyncio.futures import Future
 from asyncio.queues import Queue
 from asyncio.streams import StreamReader
 
+try:
+    import hiredis
+except ImportError:
+    pass
+
 from collections import deque
 from functools import wraps
 from inspect import getfullargspec, formatargspec, getcallargs
@@ -42,6 +47,7 @@ from .cursors import Cursor, SetCursor, DictCursor, ZCursor
 
 __all__ = (
     'RedisProtocol',
+    'HiRedisProtocol',
     'Transaction',
     'Subscription',
     'Script',
@@ -2290,3 +2296,67 @@ class Subscription:
         :returns: instance of :class:`PubSubReply <asyncio_redis.replies.PubSubReply>`
         """
         return (yield from self._messages_queue.get())
+
+
+class HiRedisProtocol(RedisProtocol, metaclass=_RedisProtocolMeta):
+
+
+    def __init__(self, password=None, db=0, encoder=None,
+                 connection_lost_callback=None, enable_typechecking=True,
+                 loop=None):
+        super().__init__(password, db, encoder, connection_lost_callback,
+                         enable_typechecking, loop)
+        self._hiredis = None
+
+    def connection_made(self, transport):
+        super().connection_made(transport)
+        self._hiredis = hiredis.Reader()
+
+    @asyncio.coroutine
+    def _handle_item(self, cb):
+        data = yield from self._reader.read(100000)
+        reply_type = None
+        for line in data.splitlines(keepends=True):
+            if reply_type is None:
+                reply_type = line[:1]
+            self._hiredis.feed(line)
+            parsed = self._hiredis.gets()
+            if parsed is False:
+                continue
+            yield from self._line_received_handlers[reply_type](cb, parsed)
+            reply_type = None
+
+    @asyncio.coroutine
+    def _handle_status_reply(self, cb, line):
+        cb(StatusReply(line.decode('ascii')))
+
+    @asyncio.coroutine
+    def _handle_int_reply(self, cb, line):
+        cb(line)
+
+    @asyncio.coroutine
+    def _handle_error_reply(self, cb, line):
+        if isinstance(line, hiredis.ReplyError):
+            cb(ErrorReply(line.args[0]))
+            return
+        cb(ErrorReply(line.decode('ascii')))
+
+    @asyncio.coroutine
+    def _handle_bulk_reply(self, cb, result):
+        cb(result)
+
+    @asyncio.coroutine
+    def _handle_multi_bulk_reply(self, cb, result):
+        if result is None:
+            cb(None)
+            return
+        reply = self._parse_multibulk_from_list(result)
+        cb(reply)
+
+    def _parse_multibulk_from_list(self, data):
+        reply = MultiBulkReply(self, len(data), loop=self._loop)
+        for token in data:
+            if isinstance(token, list):
+                token = self._parse_multibulk_from_list(token)
+            reply.queue.put_nowait(token)
+        return reply

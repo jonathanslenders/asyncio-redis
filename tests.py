@@ -8,6 +8,7 @@ from asyncio_redis import (
         Connection,
         Error,
         ErrorReply,
+        HiRedisProtocol,
         NoAvailableConnectionsInPoolError,
         NoRunningScriptError,
         NotConnectedError,
@@ -2205,6 +2206,17 @@ def _start_redis_server(loop):
     loop.run_until_complete(asyncio.sleep(.05, loop=loop))
     return redis_srv
 
+
+class HiRedisProtocolTest(RedisProtocolTest):
+    def setUp(self):
+        super().setUp()
+        self.protocol_class = HiRedisProtocol
+
+
+class HiRedisBytesProtocolTest(RedisBytesProtocolTest):
+    def setUp(self):
+        self.loop = asyncio.get_event_loop()
+        self.protocol_class = lambda **kw: HiRedisProtocol(encoder=BytesEncoder(), **kw)
 
 if __name__ == '__main__':
     if START_REDIS_SERVER:

@@ -21,7 +21,7 @@ class Connection:
     @classmethod
     @asyncio.coroutine
     def create(cls, host='localhost', port=6379, password=None, db=0,
-               encoder=None, auto_reconnect=True, loop=None):
+               encoder=None, auto_reconnect=True, loop=None, protocol_class=RedisProtocol):
         """
         :param host: Address, either host or unix domain socket path
         :type host: str
@@ -55,7 +55,7 @@ class Connection:
                 asyncio.async(connection._reconnect(), loop=connection._loop)
 
         # Create protocol instance
-        connection.protocol = RedisProtocol(password=password, db=db, encoder=encoder,
+        connection.protocol = protocol_class(password=password, db=db, encoder=encoder,
                         connection_lost_callback=connection_lost, loop=connection._loop)
 
         # Connect

@@ -7,6 +7,11 @@ from asyncio.futures import Future
 from asyncio.queues import Queue
 from asyncio.streams import StreamReader
 
+try:
+    import hiredis
+except ImportError:
+    pass
+
 from collections import deque
 from functools import wraps
 from inspect import getfullargspec, formatargspec, getcallargs
@@ -42,6 +47,7 @@ from .cursors import Cursor, SetCursor, DictCursor, ZCursor
 
 __all__ = (
     'RedisProtocol',
+    'HiRedisProtocol',
     'Transaction',
     'Subscription',
     'Script',
@@ -2290,3 +2296,105 @@ class Subscription:
         :returns: instance of :class:`PubSubReply <asyncio_redis.replies.PubSubReply>`
         """
         return (yield from self._messages_queue.get())
+
+
+class HiRedisProtocol(RedisProtocol, metaclass=_RedisProtocolMeta):
+
+
+    def __init__(self, password=None, db=0, encoder=None,
+                 connection_lost_callback=None, enable_typechecking=True,
+                 loop=None):
+        super().__init__(password, db, encoder, connection_lost_callback,
+                         enable_typechecking, loop)
+        self._hiredis = None
+
+    def connection_made(self, transport):
+        super().connection_made(transport)
+        self._hiredis = hiredis.Reader()
+        self._line_buffer = b''
+
+    @asyncio.coroutine
+    def _read_lines(self):
+        """ Reads blocks from transport and returns all completed lines.
+
+        Unused data already read from stream is cached for next line.
+        """
+        data = yield from self._reader.read(self._reader._limit)
+        lines = data.splitlines(keepends=True)
+        # stick buffered start of line to first received line.
+        if self._line_buffer:
+            lines[0] = self._line_buffer + lines[0]
+
+        # buffer last incomplete line and don't return it
+        if not lines[-1].endswith(b'\r\n'):
+            self._line_buffer = lines[-1]
+            return lines[:-1]
+        self._line_buffer = b''
+        return lines
+
+    @asyncio.coroutine
+    def _handle_item(self, cb):
+        """ Feeds HiRedis parser line-by-line, and handle all parsed results.
+
+        if hiredis returns completed reply, passes it to corresponding callback
+        found by first character of first processed line.
+        """
+        lines = yield from self._read_lines()
+        reply_type = None
+        while lines:
+            for line in lines:
+                if reply_type is None:
+                    reply_type = line[:1]
+                self._hiredis.feed(line)
+                parsed = self._hiredis.gets()
+                if parsed is False:
+                    continue
+                callback = self._line_received_handlers[reply_type]
+                yield from callback(cb, parsed)
+                reply_type = None
+            lines = yield from self._read_lines()
+
+    @asyncio.coroutine
+    def _handle_status_reply(self, cb, line):
+        cb(StatusReply(line.decode('ascii')))
+
+    @asyncio.coroutine
+    def _handle_int_reply(self, cb, line):
+        cb(line)
+
+    @asyncio.coroutine
+    def _handle_error_reply(self, cb, line):
+        if isinstance(line, hiredis.ReplyError):
+            cb(ErrorReply(line.args[0]))
+            return
+        cb(ErrorReply(line.decode('ascii')))
+
+    @asyncio.coroutine
+    def _handle_bulk_reply(self, cb, result):
+        cb(result)
+
+    @asyncio.coroutine
+    def _handle_multi_bulk_reply(self, cb, result):
+        if result is None:
+            cb(None)
+            return
+        reply = self._parse_multi_bulk_from_list(result)
+        # Return the empty queue immediately as an answer.
+        if self._in_pubsub:
+            asyncio.async(self._handle_pubsub_multibulk_reply(reply),
+                          loop=self._loop)
+        else:
+            cb(reply)
+
+    def _parse_multi_bulk_from_list(self, data):
+        """ Resursively constructs MultyBulkReply from list structure
+        returned by hiredis parser.
+
+        Helpful for parsing transaction and script replies.
+        """
+        reply = MultiBulkReply(self, len(data), loop=self._loop)
+        for token in data:
+            if isinstance(token, list):
+                token = self._parse_multi_bulk_from_list(token)
+            reply.queue.put_nowait(token)
+        return reply

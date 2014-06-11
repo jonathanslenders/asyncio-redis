@@ -9,7 +9,7 @@ if sys.version_info >= (3, 4):
     install_requires = []
 else:
     install_requires = ['asyncio']
-
+install_requires.append('hiredis')
 setup(
         name='asyncio_redis',
         author='Jonathan Slenders',

@@ -10,7 +10,7 @@ from asyncio.streams import StreamReader
 try:
     import hiredis
 except ImportError:
-    pass
+    hiredis = None
 
 from collections import deque
 from functools import wraps
@@ -2307,6 +2307,7 @@ class HiRedisProtocol(RedisProtocol, metaclass=_RedisProtocolMeta):
         super().__init__(password, db, encoder, connection_lost_callback,
                          enable_typechecking, loop)
         self._hiredis = None
+        assert hiredis, "`hiredis` libary not available. Please don't use HiRedisProtocol."
 
     def connection_made(self, transport):
         super().connection_made(transport)

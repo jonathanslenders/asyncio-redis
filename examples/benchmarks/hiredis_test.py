@@ -53,10 +53,42 @@ def test3(connection):
     assert d2 == d
 
 
+@asyncio.coroutine
+def test4(connection):
+    """ smembers test. (with _asset) """
+    s = { str(i) for i in range(100) }
+
+    yield from connection.delete(['key'])
+    yield from connection.sadd('key', list(s))
+
+    s2 = yield from connection.smembers_asset('key')
+    assert s2 == s
+
+
+@asyncio.coroutine
+def test5(connection):
+    """ smembers test. (without _asset, looping over all the items.) """
+    s = { str(i) for i in range(100) }
+
+    yield from connection.delete(['key'])
+    yield from connection.sadd('key', list(s))
+
+    result = yield from connection.smembers('key')
+    s2 = set()
+
+    for f in result:
+        i = yield from f
+        s2.add(i)
+
+    assert s2 == s
+
+
 benchmarks = [
         (1000, test1),
         (100, test2),
         (100, test3),
+        (100, test4),
+        (100, test5),
 ]
 
 

@@ -7,6 +7,11 @@ import asyncio
 import asyncio_redis
 import time
 
+try:
+    import hiredis
+except ImportError:
+    hiredis = None
+
 from asyncio_redis.protocol import HiRedisProtocol
 
 
@@ -57,7 +62,8 @@ benchmarks = [
 
 def run():
     connection = yield from asyncio_redis.Connection.create(host='localhost', port=6379)
-    hiredis_connection = yield from asyncio_redis.Connection.create(host='localhost', port=6379, protocol_class=HiRedisProtocol)
+    if hiredis:
+        hiredis_connection = yield from asyncio_redis.Connection.create(host='localhost', port=6379, protocol_class=HiRedisProtocol)
 
     try:
         for count, f in benchmarks:
@@ -70,14 +76,18 @@ def run():
             print('      Pure Python: ', time.time() - start)
 
             # Benchmark with hredis
-            start = time.time()
-            for i in range(count):
-                yield from f(hiredis_connection)
-            print('      hiredis:     ', time.time() - start)
-            print()
+            if hiredis:
+                start = time.time()
+                for i in range(count):
+                    yield from f(hiredis_connection)
+                print('      hiredis:     ', time.time() - start)
+                print()
+            else:
+                print('      hiredis:     (not available)')
     finally:
         connection.close()
-        hiredis_connection.close()
+        if hiredis:
+            hiredis_connection.close()
 
 
 if __name__ == '__main__':

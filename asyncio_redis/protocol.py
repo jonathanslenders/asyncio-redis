@@ -111,9 +111,70 @@ class MultiBulkReply:
     """
     def __init__(self, protocol, count, loop=None):
         self._loop = loop or asyncio.get_event_loop()
-        self.queue = Queue(loop=self._loop)
+
+        #: Buffer of incoming, undelivered data, received from the parser.
+        self._data_queue = []
+
+        #: Incoming read queries.
+        #: Contains (read_count, Future, decode_flag, one_only_flag) tuples.
+        self._f_queue = deque()
+
         self.protocol = protocol
         self.count = int(count)
+
+    def _feed_received(self, item):
+        """
+        Feed entry for the parser.
+        """
+        # Push received items on the queue
+        self._data_queue.append(item)
+        self._flush()
+
+    def _flush(self):
+        """
+        Answer read queries when we have enough data in our multibulk reply.
+        """
+        # As long as we have more data in our queue then we require for a read
+        # query -> answer queries.
+        while self._f_queue and self._f_queue[0][0] <= len(self._data_queue):
+            # Pop query.
+            count, f, decode, one_only = self._f_queue.popleft()
+
+            # Slice data buffer.
+            data, self._data_queue = self._data_queue[:count], self._data_queue[count:]
+
+            # When the decode flag is given, decode bytes to native types.
+            if decode:
+                data = [ self._decode(d) for d in data ]
+
+            # When one_only flag has been given, don't return an array.
+            if one_only:
+                assert len(data) == 1
+                f.set_result(data[0])
+            else:
+                f.set_result(data)
+
+    def _decode(self, result):
+        """ Decode bytes to native Python types. """
+        if isinstance(result, (StatusReply, int, float, MultiBulkReply)):
+            # Note that MultiBulkReplies can be nested. e.g. in the 'scan' operation.
+            return result
+        elif isinstance(result, bytes):
+            return self.protocol.decode_to_native(result)
+        elif result is None:
+            return result
+        else:
+            raise AssertionError('Invalid type: %r' % type(result))
+
+    def _read(self, decode=True, count=1, _one=False):
+        """ Do read operation on the queue. Return future. """
+        f = Future(loop=self.protocol._loop)
+        self._f_queue.append((count, f, decode, _one))
+
+        # If there is enough data on the queue, answer future immediately.
+        self._flush()
+
+        return f
 
     def iter_raw(self):
         """
@@ -121,34 +182,15 @@ class MultiBulkReply:
         decode bytes yet.
         """
         for i in range(self.count):
-            yield self.queue.get()
+            yield self._read(decode=False, _one=True)
 
     def __iter__(self):
         """
         Iterate over the reply. This yields coroutines of the decoded packets.
         It decodes bytes automatically using protocol.decode_to_native.
         """
-        @asyncio.coroutine
-        def auto_decode(f):
-            result = yield from f
-            if isinstance(result, (StatusReply, int, float, MultiBulkReply)):
-                # Note that MultiBulkReplies can be nested. e.g. in the 'scan' operation.
-                return result
-            elif isinstance(result, bytes):
-                return self.protocol.decode_to_native(result)
-            elif result is None:
-                return result
-            else:
-                raise AssertionError('Invalid type: %r' % type(result))
-
-        for f in self.iter_raw():
-            # We should immediately wrap this coroutine in async(), to be sure
-            # that the order of the queue remains, even if we wrap it in
-            # gather:
-            #    f1 = next(multibulk)
-            #    f2 = next(multibulk)
-            #    r1, r2 = gather(f1, f2)
-            yield asyncio.async(auto_decode(f), loop=self._loop)
+        for i in range(self.count):
+            yield self._read(_one=True)
 
     def __repr__(self):
         return 'MultiBulkReply(protocol=%r, count=%r)' % (self.protocol, self.count)
@@ -929,7 +971,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
         # Wait for all multi bulk reply content.
         for i in range(count):
-            yield from self._handle_item(reply.queue.put_nowait)
+            yield from self._handle_item(reply._feed_received)
 
     @asyncio.coroutine
     def _handle_pubsub_multibulk_reply(self, multibulk_reply):
@@ -2321,6 +2363,7 @@ class HiRedisProtocol(RedisProtocol, metaclass=_RedisProtocolMeta):
         """
         data = yield from self._reader.read(self._reader._limit)
         lines = data.splitlines(keepends=True)
+
         # stick buffered start of line to first received line.
         if self._line_buffer:
             lines[0] = self._line_buffer + lines[0]
@@ -2342,6 +2385,7 @@ class HiRedisProtocol(RedisProtocol, metaclass=_RedisProtocolMeta):
         """
         lines = yield from self._read_lines()
         reply_type = None
+
         while lines:
             for line in lines:
                 if reply_type is None:
@@ -2400,5 +2444,5 @@ class HiRedisProtocol(RedisProtocol, metaclass=_RedisProtocolMeta):
         for token in data:
             if isinstance(token, list):
                 token = self._parse_multi_bulk_from_list(token)
-            reply.queue.put_nowait(token)
+            reply._feed_received(token)
         return reply

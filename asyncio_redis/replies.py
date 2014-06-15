@@ -54,25 +54,23 @@ class DictReply:
         i = iter(self._result)
 
         @asyncio.coroutine
-        def getter(key_f, value_f):
+        def getter(f):
             """ Coroutine which processes one item. """
-            key, value = yield from gather(key_f, value_f, loop=self._result._loop)
+            key, value = yield from f
             key, value = self._parse(key, value)
-            return (key, value)
+            return key, value
 
-        while True:
-            yield asyncio.async(getter(next(i), next(i)), loop=self._result._loop)
+        for _ in range(self._result.count // 2):
+            read_future = self._result._read(count=2)
+            yield asyncio.async(getter(read_future), loop=self._result._loop)
 
     @asyncio.coroutine
     def asdict(self):
         """
         Return the result as a Python dictionary.
         """
-        result = { }
-        for f in self:
-            key, value = yield from f
-            result[key] = value
-        return result
+        data = yield from self._result._read(count=self._result.count)
+        return dict(self._parse(k, v) for k, v in zip(data[::2], data[1::2]))
 
     def __repr__(self):
         return '%s(length=%r)' % (self.__class__.__name__, int(self._result.count / 2))
@@ -109,8 +107,8 @@ class SetReply:
     @asyncio.coroutine
     def asset(self):
         """ Return the result as a Python ``set``.  """
-        result = yield from gather(* list(self._result), loop=self._result._loop)
-        return set(result)
+        data = yield from self._result._read(count=self._result.count)
+        return set(data)
 
     def __repr__(self):
         return 'SetReply(length=%r)' % (self._result.count)
@@ -136,9 +134,11 @@ class ListReply:
         """ Yield a list of futures. """
         return iter(self._result)
 
+    @asyncio.coroutine
     def aslist(self):
         """ Return the result as a Python ``list``. """
-        return gather(* list(self._result), loop=self._result._loop)
+        data = yield from self._result._read(count=self._result.count)
+        return data
 
     def __repr__(self):
         return 'ListReply(length=%r)' % (self._result.count, )

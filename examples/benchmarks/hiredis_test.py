@@ -7,6 +7,11 @@ import asyncio
 import asyncio_redis
 import time
 
+try:
+    import hiredis
+except ImportError:
+    hiredis = None
+
 from asyncio_redis.protocol import HiRedisProtocol
 
 
@@ -48,16 +53,49 @@ def test3(connection):
     assert d2 == d
 
 
+@asyncio.coroutine
+def test4(connection):
+    """ smembers test. (with _asset) """
+    s = { str(i) for i in range(100) }
+
+    yield from connection.delete(['key'])
+    yield from connection.sadd('key', list(s))
+
+    s2 = yield from connection.smembers_asset('key')
+    assert s2 == s
+
+
+@asyncio.coroutine
+def test5(connection):
+    """ smembers test. (without _asset, looping over all the items.) """
+    s = { str(i) for i in range(100) }
+
+    yield from connection.delete(['key'])
+    yield from connection.sadd('key', list(s))
+
+    result = yield from connection.smembers('key')
+    s2 = set()
+
+    for f in result:
+        i = yield from f
+        s2.add(i)
+
+    assert s2 == s
+
+
 benchmarks = [
         (1000, test1),
         (100, test2),
         (100, test3),
+        (100, test4),
+        (100, test5),
 ]
 
 
 def run():
     connection = yield from asyncio_redis.Connection.create(host='localhost', port=6379)
-    hiredis_connection = yield from asyncio_redis.Connection.create(host='localhost', port=6379, protocol_class=HiRedisProtocol)
+    if hiredis:
+        hiredis_connection = yield from asyncio_redis.Connection.create(host='localhost', port=6379, protocol_class=HiRedisProtocol)
 
     try:
         for count, f in benchmarks:
@@ -70,14 +108,18 @@ def run():
             print('      Pure Python: ', time.time() - start)
 
             # Benchmark with hredis
-            start = time.time()
-            for i in range(count):
-                yield from f(hiredis_connection)
-            print('      hiredis:     ', time.time() - start)
-            print()
+            if hiredis:
+                start = time.time()
+                for i in range(count):
+                    yield from f(hiredis_connection)
+                print('      hiredis:     ', time.time() - start)
+                print()
+            else:
+                print('      hiredis:     (not available)')
     finally:
         connection.close()
-        hiredis_connection.close()
+        if hiredis:
+            hiredis_connection.close()
 
 
 if __name__ == '__main__':

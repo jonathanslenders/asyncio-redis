@@ -44,6 +44,11 @@ import os
 import gc
 import warnings
 
+try:
+    import hiredis
+except ImportError:
+    hiredis = None
+
 PORT = int(os.environ.get('REDIS_PORT', 6379))
 HOST = os.environ.get('REDIS_HOST', 'localhost')
 START_REDIS_SERVER = bool(os.environ.get('START_REDIS_SERVER', False))
@@ -2207,16 +2212,19 @@ def _start_redis_server(loop):
     return redis_srv
 
 
+@unittest.skipIf(hiredis == None, 'Hiredis not found.')
 class HiRedisProtocolTest(RedisProtocolTest):
     def setUp(self):
         super().setUp()
         self.protocol_class = HiRedisProtocol
 
 
+@unittest.skipIf(hiredis == None, 'Hiredis not found.')
 class HiRedisBytesProtocolTest(RedisBytesProtocolTest):
     def setUp(self):
         self.loop = asyncio.get_event_loop()
         self.protocol_class = lambda **kw: HiRedisProtocol(encoder=BytesEncoder(), **kw)
+
 
 if __name__ == '__main__':
     if START_REDIS_SERVER:

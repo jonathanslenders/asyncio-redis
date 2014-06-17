@@ -1,0 +1,20 @@
+Authors
+=======
+
+Creator
+-------
+Jonathan Slenders <jonathan AT slenders.be>
+
+Contributors
+------------
+
+Alexey Popravka <alexey.popravka AT horsedevel.com>
+Andrew Svetlov <andrew.svetlov AT gmail.com>
+Don Brown <mrdon AT twdata.org>
+Oleg Baranovskiy <ramovsky AT ya.ru>
+Piotr Husiatyński <phusiatynski AT gmail.com>
+Saúl Ibarra Corretgé <saghul AT gmail.com>
+Sergey Tikhonov <zimbler AT gmail.com>
+andrepl <andrepleblanc AT gmail.com>
+tumb1er <zimbler AT gmail.com>
+शंतनू <shantanoo AT gmail.com>

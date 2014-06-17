@@ -2353,6 +2353,7 @@ class HiRedisProtocol(RedisProtocol, metaclass=_RedisProtocolMeta):
         super().connection_made(transport)
         self._hiredis = hiredis.Reader()
         self._line_buffer = b''
+        self._reply_type = None
 
     @asyncio.coroutine
     def _read_lines(self):
@@ -2384,19 +2385,17 @@ class HiRedisProtocol(RedisProtocol, metaclass=_RedisProtocolMeta):
         found by first character of first processed line.
         """
         lines = yield from self._read_lines()
-        reply_type = None
-
         while lines:
             for line in lines:
-                if reply_type is None:
-                    reply_type = line[:1]
+                if self._reply_type is None:
+                    self._reply_type = line[:1]
                 self._hiredis.feed(line)
                 parsed = self._hiredis.gets()
                 if parsed is False:
                     continue
-                callback = self._line_received_handlers[reply_type]
+                callback = self._line_received_handlers[self._reply_type]
                 yield from callback(cb, parsed)
-                reply_type = None
+                self._reply_type = None
             lines = yield from self._read_lines()
 
     @asyncio.coroutine

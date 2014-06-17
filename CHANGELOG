@@ -1,6 +1,18 @@
 CHANGELOG
 =========
 
+0.12.6: 2014-06-17
+------------------
+
+New features:
+- Added `protocol_class` parameter for Pool and Connection
+- Added experimental `HiRedisProtocol` class.
+
+Fixes:
+- Improving the performance of multibulk replies (Especially _asset, _asdict
+  and _aslist methods should be significantly faster.)
+
+
 0.12.5: 2014-06-03
 ------------------
 

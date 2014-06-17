@@ -13,7 +13,7 @@ install_requires.append('hiredis')
 setup(
         name='asyncio_redis',
         author='Jonathan Slenders',
-        version='0.12.5',
+        version='0.12.6',
         license='LICENSE.txt',
         url='https://github.com/jonathanslenders/asyncio-redis',
 

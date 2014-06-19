@@ -24,7 +24,7 @@ class Pool:
     """
     @classmethod
     @asyncio.coroutine
-    def create(cls, host='localhost', port=6379, password=None, db=0,
+    def create(cls, host='localhost', port=6379, *, password=None, db=0,
                encoder=None, poolsize=1, auto_reconnect=True, loop=None,
                protocol_class=RedisProtocol):
         """

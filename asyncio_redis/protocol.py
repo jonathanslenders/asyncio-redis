@@ -738,7 +738,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                                 enabled.
     :type enable_typechecking: bool
     """
-    def __init__(self, password=None, db=0, encoder=None, connection_lost_callback=None, enable_typechecking=True, loop=None):
+    def __init__(self, *, password=None, db=0, encoder=None, connection_lost_callback=None, enable_typechecking=True, loop=None):
         if encoder is None:
             encoder = UTF8Encoder()
 
@@ -2341,11 +2341,15 @@ class Subscription:
 
 
 class HiRedisProtocol(RedisProtocol, metaclass=_RedisProtocolMeta):
-    def __init__(self, password=None, db=0, encoder=None,
+    def __init__(self, *, password=None, db=0, encoder=None,
                  connection_lost_callback=None, enable_typechecking=True,
                  loop=None):
-        super().__init__(password, db, encoder, connection_lost_callback,
-                         enable_typechecking, loop)
+        super().__init__(password=password,
+                         db=db,
+                         encoder=encoder,
+                         connection_lost_callback=connection_lost_callback,
+                         enable_typechecking=enable_typechecking,
+                         loop=loop)
         self._hiredis = None
         assert hiredis, "`hiredis` libary not available. Please don't use HiRedisProtocol."
 

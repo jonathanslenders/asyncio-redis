@@ -26,7 +26,7 @@ def test1(connection):
 
 @asyncio.coroutine
 def test2(connection):
-    """ Get/set of large hashes (with _asdict) """
+    """ Get/set of a hash of 100 items (with _asdict) """
     d = { str(i):str(i) for i in range(100) }
 
     yield from connection.delete(['key'])
@@ -37,7 +37,7 @@ def test2(connection):
 
 @asyncio.coroutine
 def test3(connection):
-    """ Get/set of large hashes (without _asdict, looping over all the items.) """
+    """ Get/set of a hash of 100 items (without _asdict) """
     d = { str(i):str(i) for i in range(100) }
 
     yield from connection.delete(['key'])
@@ -55,7 +55,7 @@ def test3(connection):
 
 @asyncio.coroutine
 def test4(connection):
-    """ smembers test. (with _asset) """
+    """ sadd/smembers of a set of 100 items. (with _asset) """
     s = { str(i) for i in range(100) }
 
     yield from connection.delete(['key'])
@@ -67,7 +67,7 @@ def test4(connection):
 
 @asyncio.coroutine
 def test5(connection):
-    """ smembers test. (without _asset, looping over all the items.) """
+    """ sadd/smembers of a set of 100 items. (without _asset) """
     s = { str(i) for i in range(100) }
 
     yield from connection.delete(['key'])
@@ -99,7 +99,7 @@ def run():
 
     try:
         for count, f in benchmarks:
-            print(f.__doc__)
+            print('%ix %s' % (count, f.__doc__))
 
             # Benchmark without hredis
             start = time.time()

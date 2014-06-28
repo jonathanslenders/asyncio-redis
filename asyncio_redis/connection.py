@@ -20,7 +20,7 @@ class Connection:
     """
     @classmethod
     @asyncio.coroutine
-    def create(cls, host='localhost', port=6379, password=None, db=0,
+    def create(cls, host='localhost', port=6379, *, password=None, db=0,
                encoder=None, auto_reconnect=True, loop=None, protocol_class=RedisProtocol):
         """
         :param host: Address, either host or unix domain socket path

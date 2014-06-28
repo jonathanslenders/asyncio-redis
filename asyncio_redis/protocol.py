@@ -246,8 +246,8 @@ class PostProcessors:
                 BlockingPopReply: cls.multibulk_as_blocking_pop_reply,
                 ZRangeReply: cls.multibulk_as_zrangereply,
 
-                StatusReply: None,
-                (StatusReply, NoneType): None,
+                StatusReply: cls.bytes_to_status_reply,
+                (StatusReply, NoneType): cls.bytes_to_status_reply_or_none,
                 int: None,
                 (int, NoneType): None,
                 ConfigPairReply: cls.multibulk_as_configpair,
@@ -351,6 +351,17 @@ class PostProcessors:
     def bytes_to_info(protocol, result):
         assert isinstance(result, bytes)
         return InfoReply(result)
+
+    @asyncio.coroutine
+    def bytes_to_status_reply(protocol, result):
+        assert isinstance(result, bytes)
+        return StatusReply(result.decode('utf-8'))
+
+    @asyncio.coroutine
+    def bytes_to_status_reply_or_none(protocol, result):
+        assert isinstance(result, (bytes, NoneType))
+        if result:
+            return StatusReply(result.decode('utf-8'))
 
     @asyncio.coroutine
     def bytes_to_clientlist(protocol, result):
@@ -920,7 +931,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     @asyncio.coroutine
     def _handle_status_reply(self, cb):
         line = (yield from self._reader.readline()).rstrip(b'\r\n')
-        cb(StatusReply(line.decode('ascii')))
+        cb(line)
 
     @asyncio.coroutine
     def _handle_int_reply(self, cb):
@@ -1023,7 +1034,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
         if self._in_transaction and not _bypass:
             # When the connection is inside a transaction, the query will be queued.
-            if result != StatusReply('QUEUED'):
+            if result != b'QUEUED':
                 raise Error('Expected to receive QUEUED for query in transaction, received %r.' % result)
 
             # Return a future which will contain the result when it arrives.
@@ -2152,11 +2163,11 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         if watch is not None:
             for k in watch:
                 result = yield from self._query(b'watch', self.encode_from_native(k))
-                assert result == StatusReply('OK')
+                assert result == b'OK'
 
         # Call multi
         result = yield from self._query(b'multi')
-        assert result == StatusReply('OK')
+        assert result == b'OK'
 
         self._in_transaction = True
         self._transaction_response_queue = deque()
@@ -2214,7 +2225,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         self._in_transaction = False
         self._transaction = None
         result = yield from self._query(b'discard')
-        assert result == StatusReply('OK')
+        assert result == b'OK'
 
     @asyncio.coroutine
     def _unwatch(self):
@@ -2225,7 +2236,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             raise Error('Not in transaction')
 
         result = yield from self._query(b'unwatch')
-        assert result == StatusReply('OK')
+        assert result == b'OK'
 
 
 class Script:
@@ -2352,96 +2363,35 @@ class HiRedisProtocol(RedisProtocol, metaclass=_RedisProtocolMeta):
     def connection_made(self, transport):
         super().connection_made(transport)
         self._hiredis = hiredis.Reader()
-        self._line_buffer = b''
-        self._reply_type = None
 
-    @asyncio.coroutine
-    def _read_lines(self):
-        """
-        Reads blocks from transport and returns all completed lines.
+    def data_received(self, data):
+        # Move received data to hiredis parser
+        self._hiredis.feed(data)
 
-        Unused data already read from stream is cached for next line.
-        """
-        data = yield from self._reader.read(self._reader._limit)
-        lines = data.splitlines(keepends=True)
+        while True:
+            item = self._hiredis.gets()
 
-        # stick buffered start of line to first received line.
-        if self._line_buffer:
-            lines[0] = self._line_buffer + lines[0]
+            if item is not False:
+                self._process_hiredis_item(item, self._push_answer)
+            else:
+                break
 
-        # buffer last incomplete line and don't return it
-        if not lines[-1].endswith(b'\r\n'):
-            self._line_buffer = lines[-1]
-            return lines[:-1]
-        self._line_buffer = b''
-        return lines
+    def _process_hiredis_item(self, item, cb):
+        if isinstance(item, (bytes, int)):
+            cb(item)
+        elif isinstance(item, list):
+            reply = MultiBulkReply(self, len(item), loop=self._loop)
 
-    @asyncio.coroutine
-    def _handle_item(self, cb):
-        """
-        Feeds HiRedis parser line-by-line, and handle all parsed results.
+            for i in item:
+                self._process_hiredis_item(i, reply._feed_received)
 
-        if hiredis returns completed reply, passes it to corresponding callback
-        found by first character of first processed line.
-        """
-        lines = yield from self._read_lines()
-        while lines:
-            for line in lines:
-                if self._reply_type is None:
-                    self._reply_type = line[:1]
-                self._hiredis.feed(line)
-                parsed = self._hiredis.gets()
-                if parsed is False:
-                    continue
-                callback = self._line_received_handlers[self._reply_type]
-                yield from callback(cb, parsed)
-                self._reply_type = None
-            lines = yield from self._read_lines()
-
-    @asyncio.coroutine
-    def _handle_status_reply(self, cb, line):
-        cb(StatusReply(line.decode('ascii')))
-
-    @asyncio.coroutine
-    def _handle_int_reply(self, cb, line):
-        cb(line)
-
-    @asyncio.coroutine
-    def _handle_error_reply(self, cb, line):
-        if isinstance(line, hiredis.ReplyError):
-            cb(ErrorReply(line.args[0]))
-            return
-        cb(ErrorReply(line.decode('ascii')))
-
-    @asyncio.coroutine
-    def _handle_bulk_reply(self, cb, result):
-        cb(result)
-
-    @asyncio.coroutine
-    def _handle_multi_bulk_reply(self, cb, result):
-        if result is None:
-            cb(None)
-            return
-
-        reply = self._parse_multi_bulk_from_list(result)
-
-        # Return the empty queue immediately as an answer.
-        if self._in_pubsub:
-            asyncio.async(self._handle_pubsub_multibulk_reply(reply),
-                          loop=self._loop)
-        else:
             cb(reply)
+        elif isinstance(item, hiredis.ReplyError):
+            cb(ErrorReply(item.args[0]))
+        elif isinstance(item, NoneType):
+            cb(item)
 
-    def _parse_multi_bulk_from_list(self, data):
-        """
-        Resursively constructs MultyBulkReply from list structure
-        returned by hiredis parser.
-
-        Helpful for parsing transaction and script replies.
-        """
-        reply = MultiBulkReply(self, len(data), loop=self._loop)
-        for token in data:
-            if isinstance(token, list):
-                token = self._parse_multi_bulk_from_list(token)
-            reply._feed_received(token)
-        return reply
+    @asyncio.coroutine
+    def _reader_coroutine(self):
+        # We don't need this one.
+        return

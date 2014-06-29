@@ -1,6 +1,18 @@
 CHANGELOG
 =========
 
+0.13.1: 2014-06-29
+------------------
+
+Fixes:
+- HiRedisProtocol implementation has been improved. (Cleaner code and a little
+  faster.)
+
+Backward-incompatibilities:
+- Some arguments of Connection, Pool and RedisProtocol are now keyword-only.
+- Made hiredis on optional dependency. (Using extra_required in the setup.)
+
+
 0.12.6: 2014-06-17
 ------------------
 

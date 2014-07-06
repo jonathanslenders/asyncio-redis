@@ -201,9 +201,10 @@ class ClientListReply:
 
 class PubSubReply:
     """ Received pubsub message. """
-    def __init__(self, channel, value):
+    def __init__(self, channel, value, *, pattern=None):
         self._channel = channel
         self._value = value
+        self._pattern = pattern
 
     @property
     def channel(self):
@@ -215,11 +216,18 @@ class PubSubReply:
         """ Received PubSub value """
         return self._value
 
+    @property
+    def pattern(self):
+        """ The pattern to which we subscribed or `None` otherwise """
+        return self._pattern
+
     def __repr__(self):
         return 'PubSubReply(channel=%r, value=%r)' % (self.channel, self.value)
 
     def __eq__(self, other):
-        return self._channel == other._channel and self._value == other._value
+        return (self._channel == other._channel and
+                self._value == other._value and
+                self._pattern == other._pattern)
 
 
 class EvalScriptReply:

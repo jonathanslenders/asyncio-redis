@@ -912,6 +912,48 @@ class RedisProtocolTest(TestCase):
         yield from f
 
     @redis_test
+    def test_pubsub_patterns(self, transport, protocol):
+        """ Test a pubsub connection that subscribes to a pattern. """
+        @asyncio.coroutine
+        def listener():
+            # Subscribe to two patterns
+            transport2, protocol2 = yield from connect(self.loop)
+
+            subscription = yield from protocol2.start_subscribe()
+            yield from subscription.psubscribe(['h*llo', 'w?rld'])
+
+            # Receive messages
+            results = []
+            for i in range(4):
+                results.append((yield from subscription.next_published()))
+
+            self.assertEqual(results, [
+                    PubSubReply('hello', 'message1', pattern='h*llo'),
+                    PubSubReply('heello', 'message2', pattern='h*llo'),
+                    PubSubReply('world', 'message3', pattern='w?rld'),
+                    PubSubReply('wArld', 'message4', pattern='w?rld'),
+                ])
+
+            transport2.close()
+
+        f = asyncio.async(listener(), loop=self.loop)
+
+        @asyncio.coroutine
+        def sender():
+            # Should not be received
+            yield from protocol.publish('other-channel', 'message5')
+
+            # These for should be received.
+            yield from protocol.publish('hello', 'message1')
+            yield from protocol.publish('heello', 'message2')
+            yield from protocol.publish('world', 'message3')
+            yield from protocol.publish('wArld', 'message4')
+
+        yield from asyncio.sleep(.5, loop=self.loop)
+        yield from sender()
+        yield from f
+
+    @redis_test
     def test_incr(self, transport, protocol):
         yield from protocol.set(u'key1', u'3')
 

@@ -992,9 +992,10 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         if result[0] == 'message':
             channel, value = result[1], result[2]
             yield from self._subscription._messages_queue.put(PubSubReply(channel, value))
+
         elif result[0] == 'pmessage':
-            channel, value = result[2], result[3]
-            yield from self._subscription._messages_queue.put(PubSubReply(channel, value))
+            pattern, channel, value = result[1], result[2], result[3]
+            yield from self._subscription._messages_queue.put(PubSubReply(channel, value, pattern=pattern))
 
         # We can safely ignore 'subscribe'/'unsubscribe' replies at this point,
         # they don't contain anything really useful.

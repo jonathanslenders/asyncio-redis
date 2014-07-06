@@ -28,6 +28,10 @@ command of the protocol can be called directly at the connection.
         # When finished, close the connection.
         connection.close()
 
+    if __name__ == '__main__':
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(example())
+
 See :ref:`the reference <redis-reference>` to learn more about the other Redis
 commands.
 

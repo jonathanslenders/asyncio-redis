@@ -36,7 +36,7 @@ class Connection:
         :param auto_reconnect: Enable auto reconnect
         :type auto_reconnect: bool
         :param loop: (optional) asyncio event loop.
-        :type protocol_class: :class:`~asyncio_redis.protocol.RedisProtocol`
+        :type protocol_class: :class:`~asyncio_redis.RedisProtocol`
         :param protocol_class: (optional) redis protocol implementation
         """
         assert port >= 0, "Unexpected port value: %r" % (port, )

@@ -2356,6 +2356,15 @@ class Subscription:
 
 
 class HiRedisProtocol(RedisProtocol, metaclass=_RedisProtocolMeta):
+    """
+    Protocol implementation that uses the `hiredis` library for parsing the
+    incoming data. This will be faster in many cases, but not necessarily
+    always.
+
+    It does not (yet) support streaming of multibulk replies, which means that
+    you won't see the first item of a multi bulk reply, before the whole
+    response has been parsed.
+    """
     def __init__(self, *, password=None, db=0, encoder=None,
                  connection_lost_callback=None, enable_typechecking=True,
                  loop=None):

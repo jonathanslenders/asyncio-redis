@@ -16,6 +16,9 @@ The Protocol
     :undoc-members:
     :exclude-members: data_received, eof_received, connection_lost
 
+.. autoclass:: asyncio_redis.HiRedisProtocol
+    :members:
+
 
 Encoders
 ----------

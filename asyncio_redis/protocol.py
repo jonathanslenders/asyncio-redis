@@ -987,10 +987,13 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     @asyncio.coroutine
     def _handle_pubsub_multibulk_reply(self, multibulk_reply):
         result = yield from ListReply(multibulk_reply).aslist()
-        assert result[0] in ('message', 'subscribe', 'unsubscribe', 'psubscribe', 'punsubscribe')
+        assert result[0] in ('message', 'subscribe', 'unsubscribe', 'pmessage', 'psubscribe', 'punsubscribe')
 
         if result[0] == 'message':
             channel, value = result[1], result[2]
+            yield from self._subscription._messages_queue.put(PubSubReply(channel, value))
+        elif result[0] == 'pmessage':
+            channel, value = result[2], result[3]
             yield from self._subscription._messages_queue.put(PubSubReply(channel, value))
 
         # We can safely ignore 'subscribe'/'unsubscribe' replies at this point,

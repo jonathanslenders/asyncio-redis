@@ -2197,6 +2197,9 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
         if multi_bulk_reply is None:
             # We get None when a transaction failed.
+            self._transaction_response_queue = deque()
+            self._in_transaction = False
+            self._transaction = None
             raise TransactionError('Transaction failed.')
         else:
             assert isinstance(multi_bulk_reply, MultiBulkReply)

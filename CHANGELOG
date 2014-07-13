@@ -1,6 +1,14 @@
 CHANGELOG
 =========
 
+0.13.3: 2014-07-13
+------------------
+
+Fixes:
+- Protocol was in a faulty state after a transaction failure.
+- Pubsub did not work with BytesEncoder.
+
+
 0.13.2: 2014-07-06
 ------------------
 

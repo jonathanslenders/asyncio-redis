@@ -1460,6 +1460,7 @@ class RedisProtocolTest(TestCase):
         # Complete transaction
         result = yield from transaction.exec()
         self.assertEqual(result, None)
+        self.assertEqual(protocol.in_transaction, False)
 
         # Read futures
         r1 = yield from f1
@@ -1755,6 +1756,59 @@ class RedisProtocolTest(TestCase):
         # incoming result from our `brpop` in this case.
         yield from protocol.set('key', 'value')
 
+    @redis_test
+    def test_watch_1(self, transport, protocol):
+        """
+        Test a transaction, using watch
+        (Test using the watched key inside the transaction.)
+        """
+        yield from protocol.set(u'key', u'0')
+        yield from protocol.set(u'other_key', u'0')
+
+        # Test
+        self.assertEqual(protocol.in_transaction, False)
+        t = yield from protocol.multi(watch=['other_key'])
+        self.assertEqual(protocol.in_transaction, True)
+
+        yield from t.set(u'key', u'value')
+        yield from t.set(u'other_key', u'my_value')
+        yield from t.exec()
+
+        # Check
+        self.assertEqual(protocol.in_transaction, False)
+
+        result = yield from protocol.get(u'key')
+        self.assertEqual(result, u'value')
+        result = yield from protocol.get(u'other_key')
+        self.assertEqual(result, u'my_value')
+
+    @redis_test
+    def test_watch_2(self, transport, protocol):
+        """
+        Test using the watched key outside the transaction.
+        (the transaction should fail in this case.)
+        """
+        # Setup
+        transport2, protocol2 = yield from connect(self.loop)
+
+        yield from protocol.set(u'key', u'0')
+        yield from protocol.set(u'other_key', u'0')
+
+        # Test
+        t = yield from protocol.multi(watch=['other_key'])
+        yield from protocol2.set('other_key', 'other_value')
+        yield from t.set(u'other_key', u'value')
+
+        with self.assertRaises(TransactionError):
+            yield from t.exec()
+
+        # Check
+        self.assertEqual(protocol.in_transaction, False)
+        result = yield from protocol.get(u'other_key')
+        self.assertEqual(result, u'other_value')
+
+        transport2.close()
+
 
 class RedisBytesProtocolTest(TestCase):
     def setUp(self):
@@ -2032,59 +2086,6 @@ class RedisPoolTest(TestCase):
 
             self.assertEqual(result1, u'value')
             self.assertEqual(result2, u'value2')
-
-            connection.close()
-
-        self.loop.run_until_complete(test())
-
-    def test_watch(self):
-        """
-        Test a transaction, using watch
-        """
-        # Test using the watched key inside the transaction.
-        @asyncio.coroutine
-        def test():
-            # Setup
-            connection = yield from Pool.create(host=HOST, port=PORT, poolsize=3)
-            yield from connection.set(u'key', u'0')
-            yield from connection.set(u'other_key', u'0')
-
-            # Test
-            t = yield from connection.multi(watch=['other_key'])
-            yield from t.set(u'key', u'value')
-            yield from t.set(u'other_key', u'my_value')
-            yield from t.exec()
-
-            # Check
-            result = yield from connection.get(u'key')
-            self.assertEqual(result, u'value')
-            result = yield from connection.get(u'other_key')
-            self.assertEqual(result, u'my_value')
-
-            connection.close()
-
-        self.loop.run_until_complete(test())
-
-        # Test using the watched key outside the transaction.
-        # (the transaction should fail in this case.)
-        @asyncio.coroutine
-        def test():
-            # Setup
-            connection = yield from Pool.create(host=HOST, port=PORT, poolsize=3)
-            yield from connection.set(u'key', u'0')
-            yield from connection.set(u'other_key', u'0')
-
-            # Test
-            t = yield from connection.multi(watch=['other_key'])
-            yield from connection.set('other_key', 'other_value')
-            yield from t.set(u'other_key', u'value')
-
-            with self.assertRaises(TransactionError):
-                yield from t.exec()
-
-            # Check
-            result = yield from connection.get(u'other_key')
-            self.assertEqual(result, u'other_value')
 
             connection.close()
 

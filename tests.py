@@ -1829,6 +1829,33 @@ class RedisBytesProtocolTest(TestCase):
         result = yield from protocol.get(b'key')
         self.assertEqual(result, b'value')
 
+    @redis_test
+    def test_pubsub(self, transport, protocol):
+        """ Test pubsub with BytesEncoder. Channel names and data are now bytes. """
+        @asyncio.coroutine
+        def listener():
+            # Subscribe
+            transport2, protocol2 = yield from connect(self.loop,
+                protocol = lambda **kw: RedisProtocol(encoder=BytesEncoder(), **kw))
+
+            subscription = yield from protocol2.start_subscribe()
+            yield from subscription.subscribe([b'our_channel'])
+            value = yield from subscription.next_published()
+            self.assertEqual(value.channel, b'our_channel')
+            self.assertEqual(value.value, b'message1')
+
+            return transport2
+
+        @asyncio.coroutine
+        def sender():
+            value = yield from protocol.publish(b'our_channel', b'message1')
+
+        f = asyncio.async(listener(), loop=self.loop)
+        yield from asyncio.sleep(.5, loop=self.loop)
+        yield from sender()
+        transport2 = yield from f
+        transport2.close()
+
 
 class NoTypeCheckingTest(TestCase):
     def test_protocol(self):

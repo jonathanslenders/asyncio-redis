@@ -655,6 +655,8 @@ class RedisProtocolTest(TestCase):
         # rpoplpush
         result = yield from protocol.rpoplpush(u'my_list', u'my_list2')
         self.assertEqual(result, u'value')
+        result = yield from protocol.rpoplpush(u'my_list', u'my_list2')
+        self.assertEqual(result, None)
 
     @redis_test
     def test_pushx(self, transport, protocol):

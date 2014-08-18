@@ -1461,7 +1461,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return self._query(b'rpop', self.encode_from_native(key))
 
     @_query_command
-    def rpoplpush(self, source:NativeType, destination:NativeType) -> NativeType:
+    def rpoplpush(self, source:NativeType, destination:NativeType) -> (NativeType, NoneType):
         """ Remove the last element in a list, append it to another list and return it """
         return self._query(b'rpoplpush', self.encode_from_native(source), self.encode_from_native(destination))
 

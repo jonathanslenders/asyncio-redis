@@ -1,6 +1,13 @@
 CHANGELOG
 =========
 
+0.13.4: 2014-08-18
+------------------
+
+Fixes:
+- Rpoplpush can return nil when the list is empty.
+
+
 0.13.3: 2014-07-13
 ------------------
 

@@ -1761,6 +1761,28 @@ class RedisProtocolTest(TestCase):
     @redis_test
     def test_watch_1(self, transport, protocol):
         """
+        Test a transaction using watch.
+        (Retrieve the watched value then use it inside the transaction.)
+        """
+        yield from protocol.set(u'key', u'val')
+
+        # Test
+        yield from protocol.watch([u'key'])
+        value = yield from protocol.get(u'key')
+
+        t = yield from protocol.multi()
+
+        yield from t.set(u'key', value + u'ue')
+
+        yield from t.exec()
+
+        # Check
+        result = yield from protocol.get(u'key')
+        self.assertEqual(result, u'value')
+
+    @redis_test
+    def test_multi_watch_1(self, transport, protocol):
+        """
         Test a transaction, using watch
         (Test using the watched key inside the transaction.)
         """
@@ -1785,7 +1807,7 @@ class RedisProtocolTest(TestCase):
         self.assertEqual(result, u'my_value')
 
     @redis_test
-    def test_watch_2(self, transport, protocol):
+    def test_multi_watch_2(self, transport, protocol):
         """
         Test using the watched key outside the transaction.
         (the transaction should fail in this case.)

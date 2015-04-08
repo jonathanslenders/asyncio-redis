@@ -15,6 +15,7 @@ Contributors
 - David Creswick <dcrewi AT gyrae.net>
 - Denya <denya.msk AT gmail.com>
 - Don Brown <mrdon AT twdata.org>
+- Martin Richard <martius AT martiusweb.net>
 - Oleg Baranovskiy <ramovsky AT ya.ru>
 - Piotr Husiatyński <phusiatynski AT gmail.com>
 - Saúl Ibarra Corretgé <saghul AT gmail.com>

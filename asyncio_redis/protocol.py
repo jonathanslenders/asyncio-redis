@@ -2137,6 +2137,35 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                 b'match', self.encode_from_native(match))
 
     # Transaction
+    @_command
+    @asyncio.coroutine
+    def watch(self, keys:ListOf(NativeType)) -> NoneType:
+        """
+        Watch keys.
+
+        ::
+
+            # Watch keys for concurrent updates
+            yield from protocol.watch(['key', 'other_key'])
+
+            value = yield from protocol.get('key')
+            another_value = yield from protocol.get('another_key')
+
+            transaction = yield from protocol.multi()
+
+            f1 = yield from transaction.set('key', another_value)
+            f2 = yield from transaction.set('another_key', value)
+
+            # Commit transaction
+            yield from transaction.exec()
+
+            # Retrieve results
+            yield from f1
+            yield from f2
+
+        """
+        result = yield from self._query(b'watch', *map(self.encode_from_native, keys))
+        assert result == b'OK'
 
     @_command
     @asyncio.coroutine
@@ -2150,7 +2179,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
             # Run commands in transaction
             f1 = yield from transaction.set('key', 'value')
-            f1 = yield from transaction.set('another_key', 'another_value')
+            f2 = yield from transaction.set('another_key', 'another_value')
 
             # Commit transaction
             yield from transaction.exec()
@@ -2166,9 +2195,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
         # Call watch
         if watch is not None:
-            for k in watch:
-                result = yield from self._query(b'watch', self.encode_from_native(k))
-                assert result == b'OK'
+            yield from self.watch(watch)
 
         # Call multi
         result = yield from self._query(b'multi')

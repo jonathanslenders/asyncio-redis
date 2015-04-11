@@ -34,6 +34,12 @@ Features
 - Pubsub support
 
 
+*Trollius support*: There is `a fork by Ben Jolitz`_ that has the necessary
+changes for using this asyncio-redis library with Trollius.
+
+.. _a fork by Ben Jolitz: https://github.com/benjolitz/asyncio-redis
+
+
 Installation
 ------------
 

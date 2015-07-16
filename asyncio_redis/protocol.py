@@ -1581,19 +1581,23 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     @_query_command
     def zrangebyscore(self, key:NativeType,
                 min:ZScoreBoundary=ZScoreBoundary.MIN_VALUE,
-                max:ZScoreBoundary=ZScoreBoundary.MAX_VALUE) -> ZRangeReply:
+                max:ZScoreBoundary=ZScoreBoundary.MAX_VALUE,
+                offset:int=0, limit:int=-1) -> ZRangeReply:
         """ Return a range of members in a sorted set, by score """
         return self._query(b'zrangebyscore', self.encode_from_native(key),
                     self._encode_zscore_boundary(min), self._encode_zscore_boundary(max),
+                    b'limit', self._encode_int(offset), self._encode_int(limit),
                     b'withscores')
 
     @_query_command
     def zrevrangebyscore(self, key:NativeType,
                 max:ZScoreBoundary=ZScoreBoundary.MAX_VALUE,
-                min:ZScoreBoundary=ZScoreBoundary.MIN_VALUE) -> ZRangeReply:
+                min:ZScoreBoundary=ZScoreBoundary.MIN_VALUE,
+                offset:int=0, limit:int=-1) -> ZRangeReply:
         """ Return a range of members in a sorted set, by score, with scores ordered from high to low """
         return self._query(b'zrevrangebyscore', self.encode_from_native(key),
                     self._encode_zscore_boundary(max), self._encode_zscore_boundary(min),
+                    b'limit', self._encode_int(offset), self._encode_int(limit),
                     b'withscores')
 
     @_query_command

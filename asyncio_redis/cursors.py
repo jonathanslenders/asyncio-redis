@@ -43,9 +43,14 @@ class Cursor:
         Coroutines that returns the next item.
         It returns `None` after the last item.
         """
-        if not self._queue and not self._done:
+        # Make sure that we have at least some items in our queue, unless we're done.
+        # Notice that we are using 'while' instead of 'if'. This is because
+        # Redis can return a chunk of zero items, even when we're not yet finished.
+        # See: https://github.com/jonathanslenders/asyncio-redis/issues/65#issuecomment-127026408
+        while not self._queue and not self._done:
             yield from self._fetch_more()
 
+        # Return the next item.
         if self._queue:
             return self._queue.popleft()
 
@@ -54,12 +59,10 @@ class Cursor:
         """ Coroutine that reads all the items in one list. """
         results = []
 
-        while True:
-            i = yield from self.fetchone()
-            if i is None:
-                break
-            else:
-                results.append(i)
+        while not self._done:
+            yield from self._fetch_more()
+            results.extend(self._queue)
+            self._queue.clear()
 
         return results
 

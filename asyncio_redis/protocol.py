@@ -1347,7 +1347,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return self._query(b'srem', self.encode_from_native(key), *map(self.encode_from_native, members))
 
     @_query_command
-    def spop(self, key:NativeType) -> NativeType:
+    def spop(self, key:NativeType) -> (NativeType, NoneType):
         """ Removes and returns a random element from the set value stored at key. """
         return self._query(b'spop', self.encode_from_native(key))
 

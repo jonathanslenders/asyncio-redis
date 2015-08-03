@@ -474,6 +474,11 @@ class RedisProtocolTest(TestCase):
         result = yield from result.asset()
         self.assertEqual(len(result), 2)
 
+        # Popping from non-existing key should return None.
+        yield from protocol.delete([ u'my_set' ])
+        result = yield from protocol.spop(u'my_set')
+        self.assertEqual(result, None)
+
     @redis_test
     def test_type(self, transport, protocol):
         # Setup

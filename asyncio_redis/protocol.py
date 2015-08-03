@@ -2073,6 +2073,14 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             cursor = yield from protocol.scan(match='*')
             items = yield from cursor.fetchall()
 
+        It's possible to alter the COUNT-parameter, by assigning a value to
+        ``cursor.count``, before calling ``fetchone`` or ``fetchall``. For
+        instance:
+
+        ::
+
+            cursor.count = 100
+
         Also see: :func:`~asyncio_redis.RedisProtocol.sscan`,
         :func:`~asyncio_redis.RedisProtocol.hscan` and
         :func:`~asyncio_redis.RedisProtocol.zscan`
@@ -2081,15 +2089,16 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         """
         if False: yield
 
-        def scanfunc(cursor):
-            return self._scan(cursor, match)
+        def scanfunc(cursor, count):
+            return self._scan(cursor, match, count)
 
         return Cursor(name='scan(match=%r)' % match, scanfunc=scanfunc)
 
     @_query_command
-    def _scan(self, cursor:int, match:NativeType) -> _ScanPart:
+    def _scan(self, cursor:int, match:NativeType, count:int) -> _ScanPart:
         return self._query(b'scan', self._encode_int(cursor),
-                    b'match', self.encode_from_native(match))
+                    b'match', self.encode_from_native(match),
+                    b'count', self._encode_int(count))
 
     @_command
     def sscan(self, key:NativeType, match:NativeType='*') -> SetCursor:
@@ -2101,8 +2110,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         if False: yield
         name = 'sscan(key=%r match=%r)' % (key, match)
 
-        def scan(cursor):
-            return self._do_scan(b'sscan', key, cursor, match)
+        def scan(cursor, count):
+            return self._do_scan(b'sscan', key, cursor, match, count)
 
         return SetCursor(name=name, scanfunc=scan)
 
@@ -2115,8 +2124,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         if False: yield
         name = 'hscan(key=%r match=%r)' % (key, match)
 
-        def scan(cursor):
-            return self._do_scan(b'hscan', key, cursor, match)
+        def scan(cursor, count):
+            return self._do_scan(b'hscan', key, cursor, match, count)
 
         return DictCursor(name=name, scanfunc=scan)
 
@@ -2129,16 +2138,17 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         if False: yield
         name = 'zscan(key=%r match=%r)' % (key, match)
 
-        def scan(cursor):
-            return self._do_scan(b'zscan', key, cursor, match)
+        def scan(cursor, count):
+            return self._do_scan(b'zscan', key, cursor, match, count)
 
         return ZCursor(name=name, scanfunc=scan)
 
     @_query_command
-    def _do_scan(self, verb:bytes, key:NativeType, cursor:int, match:NativeType) -> _ScanPart:
+    def _do_scan(self, verb:bytes, key:NativeType, cursor:int, match:NativeType, count:int) -> _ScanPart:
         return self._query(verb, self.encode_from_native(key),
                 self._encode_int(cursor),
-                b'match', self.encode_from_native(match))
+                b'match', self.encode_from_native(match),
+                b'count', self._encode_int(count))
 
     # Transaction
     @_command

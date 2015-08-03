@@ -8,6 +8,8 @@ __all__ = (
     'ZCursor',
 )
 
+SCAN_COUNT_DEFAULT = 10
+
 
 class Cursor:
     """
@@ -21,6 +23,10 @@ class Cursor:
         self._scanfunc = scanfunc
         self._done = False
 
+        # The preferred chunk size, passed to redis.
+        # This can be changed before every call to ``fetchone`` or ``fetch_all``.
+        self.count = SCAN_COUNT_DEFAULT
+
     def __repr__(self):
         return '<%s %s>' % (self.__class__.__name__, self._name)
 
@@ -28,7 +34,7 @@ class Cursor:
     def _fetch_more(self):
         """ Get next chunk of keys from Redis """
         if not self._done:
-            chunk = yield from self._scanfunc(self._cursor)
+            chunk = yield from self._scanfunc(self._cursor, self.count)
             self._cursor = chunk.new_cursor_pos
 
             if chunk.new_cursor_pos == 0:

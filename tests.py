@@ -90,6 +90,7 @@ def redis_test(function):
                 transport.close()
 
         self.loop.run_until_complete(c())
+        self.loop._run_once()
     return wrapper
 
 

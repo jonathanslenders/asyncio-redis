@@ -2053,7 +2053,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     # Scanning
 
     @_command
-    def scan(self, match:NativeType='*') -> Cursor:
+    def scan(self, match:(NativeType, NoneType)=None) -> Cursor:
         """
         Walk through the keys space. You can either fetch the items one by one
         or in bulk.
@@ -2095,13 +2095,15 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return Cursor(name='scan(match=%r)' % match, scanfunc=scanfunc)
 
     @_query_command
-    def _scan(self, cursor:int, match:NativeType, count:int) -> _ScanPart:
+    def _scan(self, cursor:int, match:(NativeType,NoneType), count:int) -> _ScanPart:
+        match = b'*' if match is None else self.encode_from_native(match)
+
         return self._query(b'scan', self._encode_int(cursor),
-                    b'match', self.encode_from_native(match),
+                    b'match', match,
                     b'count', self._encode_int(count))
 
     @_command
-    def sscan(self, key:NativeType, match:NativeType='*') -> SetCursor:
+    def sscan(self, key:NativeType, match:(NativeType,NoneType)=None) -> SetCursor:
         """
         Incrementally iterate set elements
 
@@ -2116,7 +2118,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return SetCursor(name=name, scanfunc=scan)
 
     @_command
-    def hscan(self, key:NativeType, match:NativeType='*') -> DictCursor:
+    def hscan(self, key:NativeType, match:(NativeType,NoneType)=None) -> DictCursor:
         """
         Incrementally iterate hash fields and associated values
         Also see: :func:`~asyncio_redis.RedisProtocol.scan`
@@ -2130,7 +2132,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return DictCursor(name=name, scanfunc=scan)
 
     @_command
-    def zscan(self, key:NativeType, match:NativeType='*') -> DictCursor:
+    def zscan(self, key:NativeType, match:(NativeType,NoneType)=None) -> DictCursor:
         """
         Incrementally iterate sorted sets elements and associated scores
         Also see: :func:`~asyncio_redis.RedisProtocol.scan`
@@ -2144,10 +2146,12 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return ZCursor(name=name, scanfunc=scan)
 
     @_query_command
-    def _do_scan(self, verb:bytes, key:NativeType, cursor:int, match:NativeType, count:int) -> _ScanPart:
+    def _do_scan(self, verb:bytes, key:NativeType, cursor:int, match:(NativeType,NoneType), count:int) -> _ScanPart:
+        match = b'*' if match is None else self.encode_from_native(match)
+
         return self._query(verb, self.encode_from_native(key),
                 self._encode_int(cursor),
-                b'match', self.encode_from_native(match),
+                b'match', match,
                 b'count', self._encode_int(count))
 
     # Transaction

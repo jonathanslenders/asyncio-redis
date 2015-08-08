@@ -1,6 +1,20 @@
 CHANGELOG
 =========
 
+0.14.1: 2015-08-08
+------------------
+
+Fixes:
+- Correctly handle empty chunks returned by the 'scan' function.
+- Correctly handle returned  values in `spop`.
+- Fixed default '*' argument for scan operations. (When BytesEncore is used.)
+
+New features:
+- Add a RedisProtocol.watch() method
+- Added LIMIT support for ZRangeByScore
+- Added count parameter to 'scan' cursors.
+
+
 0.13.4: 2014-08-18
 ------------------
 

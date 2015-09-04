@@ -90,7 +90,11 @@ def redis_test(function):
                 transport.close()
 
         self.loop.run_until_complete(c())
-        self.loop._run_once()
+
+        # Run one more iteration of the event loop in order to run potential
+        # pending clean up callbacks. (We cannot use loop._run_once(), because
+        # that would block if there are no pending ready callbacks.)
+        self.loop.run_until_complete(asyncio.sleep(0, loop=self.loop))
     return wrapper
 
 

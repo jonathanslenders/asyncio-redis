@@ -82,6 +82,7 @@ class Connection:
         """ When a connection failed. Increase the interval."""
         self._retry_interval = min(60, 1.5 * self._retry_interval)
 
+    @asyncio.coroutine
     def _reconnect(self):
         """
         Set up Redis connection.

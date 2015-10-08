@@ -611,6 +611,7 @@ class CommandCreator:
         # directly on the protocol, outside of transactions or from the
         # transaction object.
         @wraps(method)
+        @asyncio.coroutine
         def wrapper(protocol_self, *a, **kw):
             # When calling from a transaction
             if protocol_self.in_transaction:
@@ -688,6 +689,7 @@ _SMALL_INTS = list(str(i).encode('ascii') for i in range(1000))
 
 # List of all command methods.
 _all_commands = []
+
 
 class _command:
     """ Mark method as command (to be passed through CommandCreator for the
@@ -1981,6 +1983,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     # LUA scripting
 
     @_command
+    @asyncio.coroutine
     def register_script(self, script:str) -> 'Script':
         """
         Register a LUA script.
@@ -2006,6 +2009,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return self._query(b'script', b'flush')
 
     @_query_command
+    @asyncio.coroutine
     def script_kill(self) -> StatusReply:
         """
         Kill the script currently in execution.  This raises
@@ -2021,6 +2025,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                 raise
 
     @_query_command
+    @asyncio.coroutine
     def evalsha(self, sha:str,
                         keys:(ListOf(NativeType), NoneType)=None,
                         args:(ListOf(NativeType), NoneType)=None) -> EvalScriptReply:

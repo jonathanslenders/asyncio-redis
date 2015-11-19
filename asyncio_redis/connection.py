@@ -54,7 +54,7 @@ class Connection:
         # Create protocol instance
         def connection_lost():
             if connection._auto_reconnect and not connection._closing:
-                asyncio.async(connection._reconnect(), loop=connection._loop)
+                asyncio.ensure_future(connection._reconnect(), loop=connection._loop)
 
         # Create protocol instance
         connection.protocol = protocol_class(password=password, db=db, encoder=encoder,

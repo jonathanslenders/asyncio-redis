@@ -62,7 +62,7 @@ class DictReply:
 
         for _ in range(self._result.count // 2):
             read_future = self._result._read(count=2)
-            yield asyncio.async(getter(read_future), loop=self._result._loop)
+            yield asyncio.ensure_future(getter(read_future), loop=self._result._loop)
 
     @asyncio.coroutine
     def asdict(self):

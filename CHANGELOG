@@ -1,6 +1,14 @@
 CHANGELOG
 =========
 
+0.14.2: 2015-12-16
+------------------
+
+Fixes:
+- Added a few missing @asyncio.coroutine decorators for Python 3.5
+  compatibility.
+
+
 0.14.1: 2015-08-08
 ------------------
 

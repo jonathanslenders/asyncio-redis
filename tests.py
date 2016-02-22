@@ -54,6 +54,13 @@ HOST = os.environ.get('REDIS_HOST', 'localhost')
 START_REDIS_SERVER = bool(os.environ.get('START_REDIS_SERVER', False))
 
 
+# In Python 3.4.4, `async` was renamed to `ensure_future`.
+try:
+    ensure_future = asyncio.ensure_future
+except AttributeError:
+    ensure_future = asyncio.async
+
+
 @asyncio.coroutine
 def connect(loop, protocol=RedisProtocol):
     """ Connect to redis server. Return transport/protocol pair. """
@@ -564,7 +571,7 @@ class RedisProtocolTest(TestCase):
             self.assertEqual(value.list_name, u'my_list')
             self.assertEqual(value.value, u'value')
             test_order.append('#3')
-        f = asyncio.async(blpop(), loop=self.loop)
+        f = ensure_future(blpop(), loop=self.loop)
 
         transport2, protocol2 = yield from connect(self.loop)
 
@@ -580,7 +587,7 @@ class RedisProtocolTest(TestCase):
             self.assertIsInstance(value, BlockingPopReply)
             self.assertEqual(value.list_name, u'my_list')
             self.assertEqual(value.value, u'value2')
-        f = asyncio.async(blpop(), loop=self.loop)
+        f = ensure_future(blpop(), loop=self.loop)
 
         yield from protocol2.rpush(u'my_list', [u'value2'])
         yield from f
@@ -597,7 +604,7 @@ class RedisProtocolTest(TestCase):
         def brpoplpush():
             result = yield from protocol.brpoplpush(u'from', u'to')
             self.assertEqual(result, u'my_value')
-        f = asyncio.async(brpoplpush(), loop=self.loop)
+        f = ensure_future(brpoplpush(), loop=self.loop)
 
         transport2, protocol2 = yield from connect(self.loop)
         yield from protocol2.rpush(u'from', [u'my_value'])
@@ -838,7 +845,7 @@ class RedisProtocolTest(TestCase):
 
             return transport2
 
-        f = asyncio.async(listener(), loop=self.loop)
+        f = ensure_future(listener(), loop=self.loop)
 
         @asyncio.coroutine
         def sender():
@@ -906,7 +913,7 @@ class RedisProtocolTest(TestCase):
 
             transport2.close()
 
-        f = asyncio.async(listener(), loop=self.loop)
+        f = ensure_future(listener(), loop=self.loop)
 
         @asyncio.coroutine
         def sender():
@@ -948,7 +955,7 @@ class RedisProtocolTest(TestCase):
 
             transport2.close()
 
-        f = asyncio.async(listener(), loop=self.loop)
+        f = ensure_future(listener(), loop=self.loop)
 
         @asyncio.coroutine
         def sender():
@@ -1441,7 +1448,7 @@ class RedisProtocolTest(TestCase):
             transport.close()
 
         # (start script)
-        f = asyncio.async(run_while_true(), loop=self.loop)
+        f = ensure_future(run_while_true(), loop=self.loop)
         yield from asyncio.sleep(.5, loop=self.loop)
 
         result = yield from protocol.script_kill()
@@ -1773,7 +1780,7 @@ class RedisProtocolTest(TestCase):
         @asyncio.coroutine
         def run():
             yield from protocol.brpop(['key'], 3)
-        f = asyncio.async(run(), loop=self.loop)
+        f = ensure_future(run(), loop=self.loop)
 
         # We cancel the coroutine before the answer arrives.
         yield from asyncio.sleep(.5, loop=self.loop)
@@ -1900,7 +1907,7 @@ class RedisBytesProtocolTest(TestCase):
         def sender():
             value = yield from protocol.publish(b'our_channel', b'message1')
 
-        f = asyncio.async(listener(), loop=self.loop)
+        f = ensure_future(listener(), loop=self.loop)
         yield from asyncio.sleep(.5, loop=self.loop)
         yield from sender()
         transport2 = yield from f
@@ -1992,7 +1999,7 @@ class RedisPoolTest(TestCase):
 
             # Wait for ever. (This blocking pop doesn't return.)
             yield from connection.delete([ 'unknown-key' ])
-            f = asyncio.async(connection.blpop(['unknown-key']), loop=self.loop)
+            f = ensure_future(connection.blpop(['unknown-key']), loop=self.loop)
             yield from asyncio.sleep(.1, loop=self.loop) # Sleep to make sure that the above coroutine started executing.
 
             # Run command in other thread.
@@ -2040,8 +2047,8 @@ class RedisPoolTest(TestCase):
                     yield from asyncio.sleep(.5, loop=self.loop)
 
             # Run both coroutines.
-            f1 = asyncio.async(source(), loop=self.loop)
-            f2 = asyncio.async(sink(), loop=self.loop)
+            f1 = ensure_future(source(), loop=self.loop)
+            f2 = ensure_future(sink(), loop=self.loop)
             yield from gather(f1, f2)
 
             # Test results.
@@ -2095,7 +2102,7 @@ class RedisPoolTest(TestCase):
             futures = []
             for i in range(0, 10):
                 self.assertEqual(connection.connections_in_use, i)
-                futures.append(asyncio.async(sink(i), loop=self.loop))
+                futures.append(ensure_future(sink(i), loop=self.loop))
                 yield from asyncio.sleep(.1, loop=self.loop) # Sleep to make sure that the above coroutine started executing.
 
             # One more blocking call should fail.

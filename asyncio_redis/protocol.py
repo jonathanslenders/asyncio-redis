@@ -2061,7 +2061,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     @_query_command
     def script_load(self, script:str) -> str:
         """ Load script, returns sha1 """
-        return self._query(b'script', b'load', script.encode('ascii'))
+        return self._query(b'script', b'load', script.encode('utf-8'))
 
     # Scanning
 

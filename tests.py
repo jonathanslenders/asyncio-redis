@@ -1482,11 +1482,6 @@ class RedisProtocolTest(TestCase):
         for f in [ f1, f2, f3, f4, f5]:
             self.assertIsInstance(f, Future)
 
-        # Running commands directly on protocol should fail.
-        with self.assertRaises(Error) as e:
-            yield from protocol.set('a', 'b')
-        self.assertEqual(e.exception.args[0], 'Cannot run command inside transaction (use the Transaction object instead)')
-
         # Calling subscribe inside transaction should fail.
         with self.assertRaises(Error) as e:
             yield from transaction.start_subscribe()
@@ -1513,6 +1508,21 @@ class RedisProtocolTest(TestCase):
         self.assertEqual(r3, u'c')
         self.assertEqual(r4, [u'b', u'c'])
         self.assertEqual(r5, { 'a': '1', 'b': '2', 'c': '3' })
+
+    @redis_test
+    def test_run_command_outside_transaction(self, transport, protocol):
+        # Start transaction.
+        transaction = yield from protocol.multi()
+
+        # Run command, but not as part of the transaction.
+        # This should wait until the transaction finishes.
+        f = ensure_future(protocol.set('a', 'b'), loop=self.loop)
+
+        # Close transaction.
+        yield from transaction.exec()
+
+        result = yield from f
+        self.assertIsInstance(result, StatusReply)
 
     @redis_test
     def test_discard_transaction(self, transport, protocol):

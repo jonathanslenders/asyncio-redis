@@ -13,7 +13,7 @@ before_install:
   - /bin/sleep 10
 
 install:
-  - "pip install . --use-mirrors"
+  - "pip install ."
   - "pip install hiredis"
 
 script: ./tests.py

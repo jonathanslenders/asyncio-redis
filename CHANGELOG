@@ -1,6 +1,22 @@
 CHANGELOG
 =========
 
+0.14.3: 2016-09-04
+------------------
+
+Fixes:
+- Better handle timeouts during pubsub. (Handle IncompleteReadError.)
+- Use asyncio.ensure_future instead of deprecated async() when available.
+- Encode scripts using utf-8 instead of ascii.
+- Bugfix in concurrency with transactions:
+    * Transactions were apparently prone to race conditions, because crutial
+      parts of the transaction did a 'yield' while entering the transaction in
+      the 'multi' command. This has been fixed now by using an asyncio.Lock.
+    * Because of this, it also became possible to start multiple
+      transactions or commands on the same connection. If the lock was acquired
+      by another transaction/command, will will wait instead of raising an
+      exception.
+
 0.14.2: 2015-12-16
 ------------------
 

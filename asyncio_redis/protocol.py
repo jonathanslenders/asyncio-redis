@@ -1555,7 +1555,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     # Sorted Sets
 
     @_query_command
-    def zadd(self, tr, key:NativeType, values:dict) -> int:
+    def zadd(self, tr, key:NativeType, values:dict, only_if_not_exists=False, only_if_exists=False, return_num_changed=False) -> int:
         """
         Add one or more members to a sorted set, or update its score if it already exists
 
@@ -1563,6 +1563,18 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
             yield protocol.zadd('myzset', { 'key': 4, 'key2': 5 })
         """
+
+        options = [ ]
+
+        assert not (only_if_not_exists and only_if_exists)
+        if only_if_not_exists:
+            options.append(b'NX')
+        elif only_if_exists:
+            options.append(b'XX')
+
+        if return_num_changed:
+            options.append(b'CH')
+
         data = [ ]
         for k,score in values.items():
             assert isinstance(k, self.native_type)
@@ -1571,7 +1583,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             data.append(self._encode_float(score))
             data.append(self.encode_from_native(k))
 
-        return self._query(tr, b'zadd', self.encode_from_native(key), *data)
+        return self._query(tr, b'zadd', self.encode_from_native(key), *(options + data))
 
     @_query_command
     def zrange(self, tr, key:NativeType, start:int=0, stop:int=-1) -> ZRangeReply:
@@ -1712,9 +1724,14 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return self._query(tr, b'zrevrank', self.encode_from_native(key), self.encode_from_native(member))
 
     @_query_command
-    def zincrby(self, tr, key:NativeType, increment:float, member:NativeType) -> float:
+    def zincrby(self, tr, key:NativeType, increment:float, member:NativeType, only_if_exists=False) -> (float, NoneType):
         """ Increment the score of a member in a sorted set """
-        return self._query(tr, b'zincrby', self.encode_from_native(key),
+
+        if only_if_exists:
+            return self._query(tr, b'zadd', self.encode_from_native(key), b'xx', b'incr',
+                    self._encode_float(increment), self.encode_from_native(member))
+        else:
+            return self._query(tr, b'zincrby', self.encode_from_native(key),
                     self._encode_float(increment), self.encode_from_native(member))
 
     @_query_command

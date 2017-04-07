@@ -15,7 +15,7 @@ Redis client for the `PEP 3156`_ Python event loop.
 
 This Redis library is a completely asynchronous, non-blocking client for a
 Redis server. It depends on asyncio (PEP 3156) and therefor it requires Python
-3.3 or 3.4. If you're new to asyncio, it can be helpful to check out
+3.3 or greater. If you're new to asyncio, it can be helpful to check out
 `the asyncio documentation`_ first.
 
 .. _the asyncio documentation: http://docs.python.org/dev/library/asyncio.html

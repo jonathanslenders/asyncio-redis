@@ -68,7 +68,10 @@ class Connection:
                         connection_lost_callback=connection_lost, loop=connection._loop)
 
         # Connect
-        yield from connection._reconnect()
+        if connection._auto_reconnect:
+            yield from connection._reconnect()
+        else:
+            yield from connection._connect()
 
         return connection
 
@@ -90,17 +93,24 @@ class Connection:
         self._retry_interval = min(60, 1.5 * self._retry_interval)
 
     @asyncio.coroutine
-    def _reconnect(self):
+    def _connect(self):
         """
         Set up Redis connection.
         """
+        logger.log(logging.INFO, 'Connecting to redis')
+        if self.port:
+            yield from self._loop.create_connection(lambda: self.protocol, self.host, self.port)
+        else:
+            yield from self._loop.create_unix_connection(lambda: self.protocol, self.host)
+
+    @asyncio.coroutine
+    def _reconnect(self):
+        """
+        Set up Redis re-connection.
+        """
         while True:
             try:
-                logger.log(logging.INFO, 'Connecting to redis')
-                if self.port:
-                    yield from self._loop.create_connection(lambda: self.protocol, self.host, self.port)
-                else:
-                    yield from self._loop.create_unix_connection(lambda: self.protocol, self.host)
+                yield from self._connect()
                 self._reset_retry_interval()
                 return
             except OSError:

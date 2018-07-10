@@ -58,7 +58,7 @@ START_REDIS_SERVER = bool(os.environ.get('START_REDIS_SERVER', False))
 try:
     ensure_future = asyncio.ensure_future
 except AttributeError:
-    ensure_future = asyncio.async
+    ensure_future = getattr(asyncio, "async")
 
 
 @asyncio.coroutine

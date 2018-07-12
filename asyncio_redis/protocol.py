@@ -62,7 +62,7 @@ NoneType = type(None)
 try:
     ensure_future = asyncio.ensure_future
 except AttributeError:
-    ensure_future = asyncio.async
+    ensure_future = getattr(asyncio, "async")
 
 class _NoTransactionType(object):
     """

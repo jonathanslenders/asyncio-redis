@@ -21,7 +21,7 @@ setup(
         long_description=open("README.rst").read(),
         packages=['asyncio_redis'],
         install_requires=install_requires,
-        extra_require = {
+        extras_require={
             'hiredis': ['hiredis'],
-        }
+        },
 )

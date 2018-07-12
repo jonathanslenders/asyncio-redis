@@ -19,7 +19,7 @@ class Pool:
 
     ::
 
-        pool = yield from Pool.create(host='localhost', port=6379, poolsize=10)
+        connection = yield from Pool.create(host='localhost', port=6379, poolsize=10)
         result = yield from connection.set('key', 'value')
     """
     @classmethod

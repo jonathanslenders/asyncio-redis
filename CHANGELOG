@@ -1,6 +1,26 @@
 CHANGELOG
 =========
 
+0.15.1: 2018-07-30
+------------------
+
+- Added Python 3.7 compatibility.
+- Added several options to zadd and zincrby.
+- Bugfix in concurrency with transactions:
+
+    * Transactions were apparently prone to race conditions, because crutial
+      parts of the transaction did a 'yield' while entering the transaction in
+      the 'multi' command. This has been fixed now by using an asyncio.Lock.
+    * Because of this, it also became possible to start multiple
+      transactions or commands on the same connection. If the lock was
+      acquired by another transaction/command, will will wait instead of
+      raising an exception.
+
+- Fall back to asyncio.async when asyncio.ensure_future is not available.
+- Encode scripts using utf-8 instead of ascii.
+- Better handle timeouts during pubsub.
+
+
 0.14.3: 2016-09-04
 ------------------
 

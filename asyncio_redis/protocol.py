@@ -1586,6 +1586,20 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return self._query(tr, b'zadd', self.encode_from_native(key), *(options + data))
 
     @_query_command
+    def zpopmin(self, tr, key:NativeType, count:int=1) -> ZRangeReply:
+        """
+        Return the specified numbers of first elements from sorted set with a minimum score
+
+        You can do the following to recieve the slice of the sorted set as a
+        python dict (mapping the keys to their scores):
+
+        ::
+            result = yield protocol.zpopmin('myzset', count=10)
+            my_dict = yield result.asdict()
+        """
+        return self._query(tr, b'zpopmin', self.encode_from_native(key), self._encode_int(count))
+
+    @_query_command
     def zrange(self, tr, key:NativeType, start:int=0, stop:int=-1) -> ZRangeReply:
         """
         Return a range of members in a sorted set, by index.

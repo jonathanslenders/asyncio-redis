@@ -547,7 +547,7 @@ class CommandCreator:
         # (But don't put the annotations inside the copied signature, that's rather
         # ugly in the docs.)
         parameters = signature(self.method).parameters
-        # The below differs from tuple(parameters.keys()) as it preservers the
+        # The below differs from tuple(parameters.keys()) as it preserves the
         # * and ** prefixes of variadic arguments
         argnames = tuple(str(p).split(':')[0] for p in parameters.values())
 

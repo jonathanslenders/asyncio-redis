@@ -546,7 +546,10 @@ class CommandCreator:
         # (*a, **kw) of the wrapper.)
         # (But don't put the anotations inside the copied signature, that's rather
         # ugly in the docs.)
-        sig = signature(self.method)
+        parameters = signature(self.method).parameters
+        # The below differs from tuple(parameters.keys()) as it preservers the
+        # * and ** prefixes of variadic arguments
+        argnames = tuple(str(p).split(':')[0] for p in parameters.values())
 
         # Use function annotations to generate param documentation.
 
@@ -605,12 +608,13 @@ class CommandCreator:
         params_str = [ get_param(k, v) for k, v in self.params.items() ]
         returns = ':returns: (Future of) %s\n' % get_name(return_type) if return_type else ''
 
-        return '%s\n%s\n\n%s%s' % (
-                sig,
-                self.method.__doc__,
-                ''.join(params_str),
-                returns
-                )
+        return '%s(%s)\n%s\n\n%s%s' % (
+            self.method.__name__ + suffix,
+            ', '.join(argnames),
+            self.method.__doc__,
+            ''.join(params_str),
+            returns
+        )
 
     def get_methods(self):
         """

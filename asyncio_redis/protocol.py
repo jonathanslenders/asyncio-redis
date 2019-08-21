@@ -544,7 +544,7 @@ class CommandCreator:
         # Append the real signature as the first line in the docstring.
         # (This will make the sphinx docs show the real signature instead of
         # (*a, **kw) of the wrapper.)
-        # (But don't put the anotations inside the copied signature, that's rather
+        # (But don't put the annotations inside the copied signature, that's rather
         # ugly in the docs.)
         parameters = signature(self.method).parameters
         # The below differs from tuple(parameters.keys()) as it preservers the
@@ -582,12 +582,10 @@ class CommandCreator:
                     float: 'float',
                     str: 'str',
                     bytes: 'bytes',
-
                     list: 'list',
                     set: 'set',
-                    dict: 'dict',
 
-                    # XXX: Because of circulare references, we cannot use the real types here.
+                    # Because of circular references, we cannot use the real types here.
                     'Transaction': ":class:`asyncio_redis.Transaction`",
                     'Subscription': ":class:`asyncio_redis.Subscription`",
                     'Script': ":class:`~asyncio_redis.Script`",
@@ -595,17 +593,14 @@ class CommandCreator:
             except KeyError:
                 if isinstance(type_, ListOf):
                     return "List or iterable of %s" % get_name(type_.type)
-
-                elif isinstance(type_, tuple):
+                if isinstance(type_, tuple):
                     return ' or '.join(get_name(t) for t in type_)
-                else:
-                    raise Exception('Unknown annotation %r' % type_)
-                    #return "``%s``" % type_.__name__
+                raise TypeError('Unknown annotation %r' % type_)
 
         def get_param(k, v):
             return ':param %s: %s\n' % (k, get_name(v))
 
-        params_str = [ get_param(k, v) for k, v in self.params.items() ]
+        params_str = [get_param(k, v) for k, v in self.params.items()]
         returns = ':returns: (Future of) %s\n' % get_name(return_type) if return_type else ''
 
         return '%s(%s)\n%s\n\n%s%s' % (

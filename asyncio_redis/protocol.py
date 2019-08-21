@@ -14,7 +14,7 @@ except ImportError:
 
 from collections import deque
 from functools import wraps
-from inspect import getfullargspec, formatargspec, getcallargs
+from inspect import getfullargspec, getcallargs, signature
 
 from .encoders import BaseEncoder, UTF8Encoder
 from .exceptions import (
@@ -546,7 +546,7 @@ class CommandCreator:
         # (*a, **kw) of the wrapper.)
         # (But don't put the anotations inside the copied signature, that's rather
         # ugly in the docs.)
-        signature = formatargspec(* self.specs[:6])
+        sig = signature(self.method)
 
         # Use function annotations to generate param documentation.
 
@@ -605,8 +605,8 @@ class CommandCreator:
         params_str = [ get_param(k, v) for k, v in self.params.items() ]
         returns = ':returns: (Future of) %s\n' % get_name(return_type) if return_type else ''
 
-        return '%s%s\n%s\n\n%s%s' % (
-                self.method.__name__ + suffix, signature,
+        return '%s\n%s\n\n%s%s' % (
+                sig,
                 self.method.__doc__,
                 ''.join(params_str),
                 returns

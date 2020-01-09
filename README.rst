@@ -20,6 +20,27 @@ Redis server. It depends on asyncio (PEP 3156) and therefor it requires Python
 
 .. _the asyncio documentation: http://docs.python.org/dev/library/asyncio.html
 
+
+Maintainers needed!
+-------------------
+
+Right now, this library is working fine, but not actively maintained, due to
+lack of time and shift of priorities on my side (Jonathan). Most of my time
+doing open source goes to prompt_toolkt community.
+
+I still merge pull request when they are fine, especially for bug/security
+fixes. But for a while now, we don't have new features. If you are already
+using it, then there's not really a need to worry, asyncio-redis will keep
+working fine, and we fix bugs, but it's not really evolving.
+
+If anyone is interested to seriously take over development, please let me know.
+Also keep in mind that there is a competing library called `aioredis`, which
+does have a lot of activity.
+
+See issue https://github.com/jonathanslenders/asyncio-redis/issues/134 to
+discuss.
+
+
 Features
 --------
 

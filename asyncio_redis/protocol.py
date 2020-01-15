@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import asyncio
+import enum
 import logging
 import types
 
@@ -58,11 +59,6 @@ __all__ = (
 
 NoneType = type(None)
 
-# In Python 3.4.4, `async` was renamed to `ensure_future`.
-try:
-    ensure_future = asyncio.ensure_future
-except AttributeError:
-    ensure_future = getattr(asyncio, "async")
 
 class _NoTransactionType(object):
     """
@@ -71,7 +67,10 @@ class _NoTransactionType(object):
     from None. (None could be a valid input for a @_command, so there is no way
     to see whether this would be an extra 'transaction' value.)
     """
+
+
 _NoTransaction = _NoTransactionType()
+
 
 class ZScoreBoundary:
     """
@@ -96,17 +95,11 @@ ZScoreBoundary.MIN_VALUE = ZScoreBoundary('-inf')
 ZScoreBoundary.MAX_VALUE = ZScoreBoundary('+inf')
 
 
-class ZAggregate: # TODO: use the Python 3.4 enum type.
+class ZAggregate(enum.Enum):
+    """Aggregation method for zinterstore and zunionstore
     """
-    Aggregation method for zinterstore and zunionstore.
-    """
-    #: Sum aggregation.
     SUM = 'SUM'
-
-    #: Min aggregation.
     MIN = 'MIN'
-
-    #: Max aggregation.
     MAX = 'MAX'
 
 
@@ -653,7 +646,7 @@ class CommandCreator:
                     typecheck_return(protocol_self, result)
                     future2.set_result(result)
 
-                future.add_done_callback(lambda f: ensure_future(done(f.result()), loop=protocol_self._loop))
+                future.add_done_callback(lambda f: asyncio.ensure_future(done(f.result()), loop=protocol_self._loop))
 
                 return future2
 
@@ -825,7 +818,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         # Start parsing reader stream.
         self._reader = StreamReader(loop=self._loop)
         self._reader.set_transport(transport)
-        self._reader_f = ensure_future(self._reader_coroutine(), loop=self._loop)
+        self._reader_f = asyncio.ensure_future(self._reader_coroutine(), loop=self._loop)
 
         @asyncio.coroutine
         def initialize():
@@ -844,7 +837,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                 if self._pubsub_patterns:
                     yield from self._psubscribe(self._subscription, list(self._pubsub_patterns))
 
-        ensure_future(initialize(), loop=self._loop)
+        asyncio.ensure_future(initialize(), loop=self._loop)
 
     def data_received(self, data):
         """ Process data received from Redis server.  """
@@ -999,7 +992,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
         # Return the empty queue immediately as an answer.
         if self._in_pubsub:
-            ensure_future(self._handle_pubsub_multibulk_reply(reply), loop=self._loop)
+            asyncio.ensure_future(self._handle_pubsub_multibulk_reply(reply), loop=self._loop)
         else:
             cb(reply)
 

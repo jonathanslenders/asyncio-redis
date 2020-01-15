@@ -7,13 +7,6 @@ import logging
 __all__ = ('Connection', )
 
 
-# In Python 3.4.4, `async` was renamed to `ensure_future`.
-try:
-    ensure_future = asyncio.ensure_future
-except AttributeError:
-    ensure_future = getattr(asyncio, "async")
-
-
 class Connection:
     """
     Wrapper around the protocol and transport which takes care of establishing
@@ -61,7 +54,7 @@ class Connection:
         # Create protocol instance
         def connection_lost():
             if connection._auto_reconnect and not connection._closing:
-                ensure_future(connection._reconnect(), loop=connection._loop)
+                asyncio.ensure_future(connection._reconnect(), loop=connection._loop)
 
         # Create protocol instance
         connection.protocol = protocol_class(password=password, db=db, encoder=encoder,

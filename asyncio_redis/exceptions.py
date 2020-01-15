@@ -12,7 +12,7 @@ __all__ = (
 
 
 # See following link for the proper way to create user defined exceptions:
-# http://docs.python.org/3.3/tutorial/errors.html#user-defined-exceptions
+# http://docs.python.org/3.8/tutorial/errors.html#user-defined-exceptions
 
 
 class Error(Exception):

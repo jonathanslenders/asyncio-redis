@@ -59,10 +59,7 @@ async def connect(protocol=RedisProtocol):
 
 
 def redis_test(function):
-    """
-    Decorator for methods (which are coroutines) in RedisProtocolTest
-
-    Wraps the coroutine inside `run_until_complete`.
+    """Decorator for async test methods in RedisProtocolTest
     """
     def wrapper(self):
         async def c():
@@ -81,6 +78,16 @@ def redis_test(function):
             await asyncio.sleep(0)
 
         self.loop.run_until_complete(c())
+
+    return wrapper
+
+
+def async_test(function):
+    """Decorator for other async test methods
+    """
+    def wrapper(self):
+        loop = getattr(self, "loop", asyncio.get_event_loop())
+        loop.run_until_complete(function(self))
 
     return wrapper
 
@@ -1892,22 +1899,19 @@ class RedisBytesProtocolTest(TestCase):
 
 
 class NoTypeCheckingTest(TestCase):
-    def test_protocol(self):
-        # Override protocol, disabling type checking.
-        def factory(**kw):
-            return RedisProtocol(encoder=BytesEncoder(), enable_typechecking=False, **kw)
+    @async_test
+    async def test_protocol(self):
+        transport, protocol = await connect(
+            lambda **kw: RedisProtocol(
+                encoder=BytesEncoder(), enable_typechecking=False, **kw
+            ),
+        )
 
-        async def test():
-            transport, protocol = await connect(factory)
+        # Setting values should still work.
+        result = await protocol.set(b'key', b'value')
+        self.assertEqual(result, StatusReply('OK'))
 
-            # Setting values should still work.
-            result = await protocol.set(b'key', b'value')
-            self.assertEqual(result, StatusReply('OK'))
-
-            transport.close()
-
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(test())
+        transport.close()
 
 
 class RedisConnectionTest(TestCase):
@@ -1915,26 +1919,24 @@ class RedisConnectionTest(TestCase):
     def setUp(self):
         self.loop = asyncio.get_event_loop()
 
-    def test_connection(self):
-        async def test():
-            # Create connection
-            connection = await Connection.create(host=HOST, port=PORT)
-            self.assertEqual(
-                repr(connection), f"Connection(host='{HOST}', port={PORT})"
-            )
-            self.assertEqual(connection._closing, False)
+    @async_test
+    async def test_connection(self):
+        # Create connection
+        connection = await Connection.create(host=HOST, port=PORT)
+        self.assertEqual(
+            repr(connection), f"Connection(host='{HOST}', port={PORT})"
+        )
+        self.assertEqual(connection._closing, False)
 
-            # Test get/set
-            await connection.set('key', 'value')
-            result = await connection.get('key')
-            self.assertEqual(result, 'value')
+        # Test get/set
+        await connection.set('key', 'value')
+        result = await connection.get('key')
+        self.assertEqual(result, 'value')
 
-            connection.close()
+        connection.close()
 
-            # Test closing flag
-            self.assertEqual(connection._closing, True)
-
-        self.loop.run_until_complete(test())
+        # Test closing flag
+        self.assertEqual(connection._closing, True)
 
 
 class RedisPoolTest(TestCase):
@@ -1942,276 +1944,256 @@ class RedisPoolTest(TestCase):
     def setUp(self):
         self.loop = asyncio.get_event_loop()
 
-    def test_pool(self):
+    @async_test
+    async def test_pool(self):
         """ Test creation of Connection instance. """
-        async def test():
-            # Create pool
-            connection = await Pool.create(host=HOST, port=PORT)
-            self.assertEqual(
-                repr(connection), f"Pool(host='{HOST}', port={PORT}, poolsize=1)"
-            )
+        # Create pool
+        connection = await Pool.create(host=HOST, port=PORT)
+        self.assertEqual(
+            repr(connection), f"Pool(host='{HOST}', port={PORT}, poolsize=1)"
+        )
 
-            # Test get/set
-            await connection.set('key', 'value')
-            result = await connection.get('key')
-            self.assertEqual(result, 'value')
+        # Test get/set
+        await connection.set('key', 'value')
+        result = await connection.get('key')
+        self.assertEqual(result, 'value')
 
-            # Test default poolsize
-            self.assertEqual(connection.poolsize, 1)
+        # Test default poolsize
+        self.assertEqual(connection.poolsize, 1)
 
-            connection.close()
+        connection.close()
 
-        self.loop.run_until_complete(test())
-
-    def test_connection_in_use(self):
+    @async_test
+    async def test_connection_in_use(self):
         """
         When a blocking call is running, it's impossible to use the same
         protocol for another call.
         """
-        async def test():
-            # Create connection
-            connection = await Pool.create(host=HOST, port=PORT)
-            self.assertEqual(connection.connections_in_use, 0)
+        # Create connection
+        connection = await Pool.create(host=HOST, port=PORT)
+        self.assertEqual(connection.connections_in_use, 0)
 
-            # Wait for ever. (This blocking pop doesn't return.)
-            await connection.delete([ 'unknown-key' ])
-            f = self.loop.create_task(connection.blpop(['unknown-key']))
-            # Sleep to make sure that the above task started executing
-            await asyncio.sleep(.1)
+        # Wait for ever. (This blocking pop doesn't return.)
+        await connection.delete([ 'unknown-key' ])
+        f = self.loop.create_task(connection.blpop(['unknown-key']))
+        # Sleep to make sure that the above task started executing
+        await asyncio.sleep(.1)
 
-            # Run command in other thread.
-            with self.assertRaises(NoAvailableConnectionsInPoolError) as e:
-                await connection.set('key', 'value')
-            self.assertIn('No available connections in the pool', e.exception.args[0])
+        # Run command in other thread.
+        with self.assertRaises(NoAvailableConnectionsInPoolError) as e:
+            await connection.set('key', 'value')
+        self.assertIn('No available connections in the pool', e.exception.args[0])
 
-            self.assertEqual(connection.connections_in_use, 1)
+        self.assertEqual(connection.connections_in_use, 1)
 
-            connection.close()
+        connection.close()
 
-            # Consume this future (which now contains ConnectionLostError)
-            with self.assertRaises(ConnectionLostError):
-                await f
+        # Consume this future (which now contains ConnectionLostError)
+        with self.assertRaises(ConnectionLostError):
+            await f
 
-        self.loop.run_until_complete(test())
-
-    def test_parallel_requests(self):
+    @async_test
+    async def test_parallel_requests(self):
         """
         Test a blocking pop and a set using a connection pool.
         """
-        async def test():
-            # Create connection
-            connection = await Pool.create(host=HOST, port=PORT, poolsize=2)
-            await connection.delete([ 'my-list' ])
+        # Create connection
+        connection = await Pool.create(host=HOST, port=PORT, poolsize=2)
+        await connection.delete([ 'my-list' ])
 
-            results = []
+        results = []
 
-            # Sink: receive items using blocking pop
-            async def sink():
-                for i in range(0, 5):
-                    reply = await connection.blpop(['my-list'])
-                    self.assertIsInstance(reply, BlockingPopReply)
-                    self.assertIsInstance(reply.value, str)
-                    results.append(reply.value)
-                    self.assertIn(u"BlockingPopReply(list_name='my-list', value='", repr(reply))
+        # Sink: receive items using blocking pop
+        async def sink():
+            for i in range(0, 5):
+                reply = await connection.blpop(['my-list'])
+                self.assertIsInstance(reply, BlockingPopReply)
+                self.assertIsInstance(reply.value, str)
+                results.append(reply.value)
+                self.assertIn(u"BlockingPopReply(list_name='my-list', value='", repr(reply))
 
-            # Source: Push items on the queue
-            async def source():
-                for i in range(0, 5):
-                    await connection.rpush('my-list', [str(i)])
-                    await asyncio.sleep(.5)
+        # Source: Push items on the queue
+        async def source():
+            for i in range(0, 5):
+                await connection.rpush('my-list', [str(i)])
+                await asyncio.sleep(.5)
 
-            # Run both coroutines
-            await asyncio.gather(source(), sink())
+        # Run both coroutines
+        await asyncio.gather(source(), sink())
 
-            # Test results.
-            self.assertEqual(results, [ str(i) for i in range(0, 5) ])
+        # Test results.
+        self.assertEqual(results, [ str(i) for i in range(0, 5) ])
 
-            connection.close()
+        connection.close()
 
-        self.loop.run_until_complete(test())
-
-    def test_select_db(self):
+    @async_test
+    async def test_select_db(self):
         """
         Connect to two different DBs.
         """
-        async def test():
-            c1 = await Pool.create(host=HOST, port=PORT, poolsize=10, db=1)
-            c2 = await Pool.create(host=HOST, port=PORT, poolsize=10, db=2)
+        c1 = await Pool.create(host=HOST, port=PORT, poolsize=10, db=1)
+        c2 = await Pool.create(host=HOST, port=PORT, poolsize=10, db=2)
 
-            c3 = await Pool.create(host=HOST, port=PORT, poolsize=10, db=1)
-            c4 = await Pool.create(host=HOST, port=PORT, poolsize=10, db=2)
+        c3 = await Pool.create(host=HOST, port=PORT, poolsize=10, db=1)
+        c4 = await Pool.create(host=HOST, port=PORT, poolsize=10, db=2)
 
-            await c1.set('key', 'A')
-            await c2.set('key', 'B')
+        await c1.set('key', 'A')
+        await c2.set('key', 'B')
 
-            r1 = await c3.get('key')
-            r2 = await c4.get('key')
+        r1 = await c3.get('key')
+        r2 = await c4.get('key')
 
-            self.assertEqual(r1, 'A')
-            self.assertEqual(r2, 'B')
+        self.assertEqual(r1, 'A')
+        self.assertEqual(r2, 'B')
 
-            for c in [ c1, c2, c3, c4]:
-                c.close()
+        for c in [ c1, c2, c3, c4]:
+            c.close()
 
-        self.loop.run_until_complete(test())
-
-    def test_in_use_flag(self):
+    @async_test
+    async def test_in_use_flag(self):
         """
         Do several blocking calls and see whether in_use increments.
         """
-        async def test():
-            # Create connection
-            connection = await Pool.create(host=HOST, port=PORT, poolsize=10)
-            for i in range(0, 10):
-                await connection.delete([ 'my-list-%i' % i ])
+        # Create connection
+        connection = await Pool.create(host=HOST, port=PORT, poolsize=10)
+        for i in range(0, 10):
+            await connection.delete([ 'my-list-%i' % i ])
 
-            async def sink(i):
-                await connection.blpop(['my-list-%i' % i])
+        async def sink(i):
+            await connection.blpop(['my-list-%i' % i])
 
-            futures = []
-            for i in range(0, 10):
-                self.assertEqual(connection.connections_in_use, i)
-                futures.append(self.loop.create_task(sink(i)))
-                # Sleep to make sure that the above coroutine started executing
-                await asyncio.sleep(.1)
+        futures = []
+        for i in range(0, 10):
+            self.assertEqual(connection.connections_in_use, i)
+            futures.append(self.loop.create_task(sink(i)))
+            # Sleep to make sure that the above coroutine started executing
+            await asyncio.sleep(.1)
 
-            # One more blocking call should fail.
-            with self.assertRaises(NoAvailableConnectionsInPoolError) as e:
-                await connection.delete([ 'my-list-one-more' ])
-                await connection.blpop(['my-list-one-more'])
-            self.assertIn('No available connections in the pool', e.exception.args[0])
+        # One more blocking call should fail.
+        with self.assertRaises(NoAvailableConnectionsInPoolError) as e:
+            await connection.delete([ 'my-list-one-more' ])
+            await connection.blpop(['my-list-one-more'])
+        self.assertIn('No available connections in the pool', e.exception.args[0])
 
-            connection.close()
+        connection.close()
 
-            # Consume this futures (which now contain ConnectionLostError)
-            with self.assertRaises(ConnectionLostError):
-                await asyncio.gather(*futures)
+        # Consume this futures (which now contain ConnectionLostError)
+        with self.assertRaises(ConnectionLostError):
+            await asyncio.gather(*futures)
 
-        self.loop.run_until_complete(test())
+    @async_test
+    async def test_lua_script_in_pool(self):
+        # Create connection
+        connection = await Pool.create(host=HOST, port=PORT, poolsize=3)
 
-    def test_lua_script_in_pool(self):
-        async def test():
-            # Create connection
-            connection = await Pool.create(host=HOST, port=PORT, poolsize=3)
+        # Register script
+        script = await connection.register_script("return 100")
+        self.assertIsInstance(script, Script)
 
-            # Register script
-            script = await connection.register_script("return 100")
-            self.assertIsInstance(script, Script)
+        # Run script
+        scriptreply = await script.run()
+        result = await scriptreply.return_value()
+        self.assertEqual(result, 100)
 
-            # Run script
-            scriptreply = await script.run()
-            result = await scriptreply.return_value()
-            self.assertEqual(result, 100)
+        connection.close()
 
-            connection.close()
-
-        self.loop.run_until_complete(test())
-
-    def test_transactions(self):
+    @async_test
+    async def test_transactions(self):
         """
         Do several transactions in parallel.
         """
-        async def test():
-            # Create connection
-            connection = await Pool.create(host=HOST, port=PORT, poolsize=3)
+        # Create connection
+        connection = await Pool.create(host=HOST, port=PORT, poolsize=3)
 
-            t1 = await connection.multi()
-            t2 = await connection.multi()
+        t1 = await connection.multi()
+        t2 = await connection.multi()
+        await connection.multi()
+
+        # Fourth transaction should fail. (Pool is full)
+        with self.assertRaises(NoAvailableConnectionsInPoolError) as e:
             await connection.multi()
+        self.assertIn('No available connections in the pool', e.exception.args[0])
 
-            # Fourth transaction should fail. (Pool is full)
-            with self.assertRaises(NoAvailableConnectionsInPoolError) as e:
-                await connection.multi()
-            self.assertIn('No available connections in the pool', e.exception.args[0])
+        # Run commands in transaction
+        await t1.set(u'key', u'value')
+        await t2.set(u'key2', u'value2')
 
-            # Run commands in transaction
-            await t1.set(u'key', u'value')
-            await t2.set(u'key2', u'value2')
+        # Commit.
+        await t1.exec()
+        await t2.exec()
 
-            # Commit.
-            await t1.exec()
-            await t2.exec()
+        # Check
+        result1 = await connection.get(u'key')
+        result2 = await connection.get(u'key2')
 
-            # Check
-            result1 = await connection.get(u'key')
-            result2 = await connection.get(u'key2')
+        self.assertEqual(result1, u'value')
+        self.assertEqual(result2, u'value2')
 
-            self.assertEqual(result1, u'value')
-            self.assertEqual(result2, u'value2')
+        connection.close()
 
-            connection.close()
-
-        self.loop.run_until_complete(test())
-
-    def test_connection_reconnect(self):
+    @async_test
+    async def test_connection_reconnect(self):
         """
         Test whether the connection reconnects.
         (needs manual interaction.)
         """
-        async def test():
-            connection = await Pool.create(host=HOST, port=PORT, poolsize=1)
+        connection = await Pool.create(host=HOST, port=PORT, poolsize=1)
+        await connection.set('key', 'value')
+
+        # Try the reconnect cycle several times. (Be sure that the
+        # `connection_lost` callback doesn't set variables that avoid
+        # reconnection a second time.)
+        for i in range(3):
+            transport = connection._connections[0].transport
+            transport.close()
+
+            await asyncio.sleep(1)  # Give asyncio time to reconnect
+
+            # Test get/set
             await connection.set('key', 'value')
 
-            # Try the reconnect cycle several times. (Be sure that the
-            # `connection_lost` callback doesn't set variables that avoid
-            # reconnection a second time.)
-            for i in range(3):
-                transport = connection._connections[0].transport
-                transport.close()
+        connection.close()
 
-                await asyncio.sleep(1)  # Give asyncio time to reconnect
-
-                # Test get/set
-                await connection.set('key', 'value')
-
-            connection.close()
-
-        self.loop.run_until_complete(test())
-
-    def test_connection_lost(self):
+    @async_test
+    async def test_connection_lost(self):
         """
         When the transport is closed, any further commands should raise
         NotConnectedError. (Unless the transport would be auto-reconnecting and
         have established a new connection.)
         """
-        async def test():
-            # Create connection
-            transport, protocol = await connect(RedisProtocol)
+        # Create connection
+        transport, protocol = await connect(RedisProtocol)
+        await protocol.set('key', 'value')
+
+        # Close transport
+        self.assertEqual(protocol.is_connected, True)
+        transport.close()
+        await asyncio.sleep(.5)
+        self.assertEqual(protocol.is_connected, False)
+
+        # Test get/set
+        with self.assertRaises(NotConnectedError):
             await protocol.set('key', 'value')
 
-            # Close transport
-            self.assertEqual(protocol.is_connected, True)
-            transport.close()
-            await asyncio.sleep(.5)
-            self.assertEqual(protocol.is_connected, False)
+        transport.close()
 
-            # Test get/set
-            with self.assertRaises(NotConnectedError):
-                await protocol.set('key', 'value')
+    @async_test
+    async def test_connection_lost_pool(self):
+        # Create connection
+        connection = await Pool.create(host=HOST, port=PORT, poolsize=1, auto_reconnect=False)
+        await connection.set('key', 'value')
 
-            transport.close()
+        # Close transport
+        transport = connection._connections[0].transport
+        transport.close()
+        await asyncio.sleep(.5)
 
-        self.loop.run_until_complete(test())
-
-    def test_connection_lost_pool(self):
-        async def test():
-            # Create connection
-            connection = await Pool.create(host=HOST, port=PORT, poolsize=1, auto_reconnect=False)
+        # Test get/set
+        with self.assertRaises(NoAvailableConnectionsInPoolError) as e:
             await connection.set('key', 'value')
+        self.assertIn('No available connections in the pool: size=1, in_use=0, connected=0', e.exception.args[0])
 
-            # Close transport
-            transport = connection._connections[0].transport
-            transport.close()
-            await asyncio.sleep(.5)
-
-            # Test get/set
-            with self.assertRaises(NoAvailableConnectionsInPoolError) as e:
-                await connection.set('key', 'value')
-            self.assertIn('No available connections in the pool: size=1, in_use=0, connected=0', e.exception.args[0])
-
-            connection.close()
-
-        self.loop.run_until_complete(test())
+        connection.close()
 
 
 class NoGlobalLoopTest(TestCase):
@@ -2219,35 +2201,49 @@ class NoGlobalLoopTest(TestCase):
     If we set the global loop variable to None, everything should still work.
     """
     def test_no_global_loop(self):
-        old_loop = asyncio.get_event_loop()
-        # Remove global loop and create a new one.
-        asyncio.set_event_loop(None)
-        new_loop = asyncio.new_event_loop()
-        try:
-            # ** Run code on the new loop. **
 
-            # Create connection
-            connection = new_loop.run_until_complete(Connection.create(host=HOST, port=PORT, loop=new_loop))
-
+        async def test():
+            connection = await Connection.create(host=HOST, port=PORT)
             self.assertIsInstance(connection, Connection)
             try:
                 # Delete keys
-                new_loop.run_until_complete(connection.delete(['key1', 'key2']))
+                await connection.delete(['key1', 'key2'])
 
                 # Get/set
-                new_loop.run_until_complete(connection.set('key1', 'value'))
-                result = new_loop.run_until_complete(connection.get('key1'))
+                await connection.set('key1', 'value')
+                result = await connection.get('key1')
                 self.assertEqual(result, 'value')
 
                 # hmset/hmget (something that uses a MultiBulkReply)
-                new_loop.run_until_complete(connection.hmset('key2', { 'a': 'b', 'c': 'd' }))
-                result = new_loop.run_until_complete(connection.hgetall_asdict('key2'))
+                await connection.hmset('key2', {'a': 'b', 'c': 'd'})
+                result = await connection.hgetall_asdict('key2')
+                self.assertEqual(result, {'a': 'b', 'c': 'd'})
+
+                # Delete keys
+                await connection.delete(['key1', 'key2'])
+
+                # Get/set
+                await connection.set('key1', 'value')
+                result = await connection.get('key1')
+                self.assertEqual(result, 'value')
+
+                # hmset/hmget (something that uses a MultiBulkReply)
+                await connection.hmset('key2', { 'a': 'b', 'c': 'd' })
+                result = await connection.hgetall_asdict('key2')
                 self.assertEqual(result, { 'a': 'b', 'c': 'd' })
+
             finally:
                 connection.close()
+                # Run loop briefly until socket has been closed.
+                await asyncio.sleep(0.1)
+
+        # Remove global loop and create a new one.
+        old_loop = asyncio.get_event_loop()
+        asyncio.set_event_loop(None)
+        new_loop = asyncio.new_event_loop()
+        try:
+            new_loop.run_until_complete(test())
         finally:
-            # Run loop briefly until socket has been closed.
-            new_loop.run_until_complete(asyncio.sleep(0.1))
             new_loop.close()
             asyncio.set_event_loop(old_loop)
 
@@ -2284,20 +2280,20 @@ class RedisBytesWithoutGlobalEventloopProtocolTest(RedisBytesProtocolTest):
         super().tearDown()
 
 
-def _start_redis_server(loop):
+async def start_redis_server():
     print(f'Running Redis server REDIS_HOST={HOST} REDIS_PORT={PORT}...')
 
-    redis_srv = loop.run_until_complete(
-                asyncio.create_subprocess_exec(
-                    'redis-server',
-                    '--port', str(PORT),
-                    ('--bind' if PORT else '--unixsocket'), HOST,
-                    '--maxclients', '100',
-                    '--save', '""',
-                    '--loglevel', 'warning',
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL))
-    loop.run_until_complete(asyncio.sleep(.05))
+    redis_srv = await asyncio.create_subprocess_exec(
+        'redis-server',
+        '--port', str(PORT),
+        ('--bind' if PORT else '--unixsocket'), HOST,
+        '--maxclients', '100',
+        '--save', '""',
+        '--loglevel', 'warning',
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    await asyncio.sleep(.05)
     return redis_srv
 
 
@@ -2317,11 +2313,11 @@ class HiRedisBytesProtocolTest(RedisBytesProtocolTest):
 
 if __name__ == '__main__':
     if START_REDIS_SERVER:
-        redis_srv = _start_redis_server(asyncio.get_event_loop())
+        loop = asyncio.get_event_loop()
+        redis_srv = loop.run_until_complete(start_redis_server())
 
     try:
         unittest.main()
     finally:
         if START_REDIS_SERVER:
             redis_srv.terminate()
-

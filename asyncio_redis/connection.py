@@ -2,7 +2,6 @@ from .log import logger
 from .protocol import RedisProtocol, _all_commands
 import asyncio
 import logging
-import warnings
 
 
 class Connection:

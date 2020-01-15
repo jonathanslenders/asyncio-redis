@@ -54,9 +54,9 @@ async def connect(protocol=RedisProtocol):
     """ Connect to redis server. Return transport/protocol pair. """
     loop = asyncio.get_event_loop()
     if PORT:
-        return await loop.create_connection(lambda: protocol(loop=loop), HOST, PORT)
+        return await loop.create_connection(lambda: protocol(), HOST, PORT)
     else:
-        return await loop.create_unix_connection(lambda: protocol(loop=loop), HOST)
+        return await loop.create_unix_connection(lambda: protocol(), HOST)
 
 
 def redis_test(function):
@@ -827,7 +827,7 @@ class RedisProtocolTest(TestCase):
 
             return transport2
 
-        f = asyncio.ensure_future(listener(), loop=self.loop)
+        f = asyncio.ensure_future(listener())
 
         async def sender():
             value = await protocol.publish(u'our_channel', 'message1')
@@ -863,7 +863,7 @@ class RedisProtocolTest(TestCase):
             result = await protocol.pubsub_numpat()
             self.assertIsInstance(result, int)
 
-        await asyncio.sleep(.5, loop=self.loop)
+        await asyncio.sleep(.5)
         await sender()
         transport2 = await f
         transport2.close()
@@ -1425,8 +1425,8 @@ class RedisProtocolTest(TestCase):
             transport.close()
 
         # (start script)
-        f = asyncio.ensure_future(run_while_true(), loop=self.loop)
-        await asyncio.sleep(.5, loop=self.loop)
+        f = asyncio.ensure_future(run_while_true())
+        await asyncio.sleep(.5)
 
         result = await protocol.script_kill()
         self.assertEqual(result, StatusReply('OK'))
@@ -1493,7 +1493,7 @@ class RedisProtocolTest(TestCase):
 
         # Run command, but not as part of the transaction.
         # This should wait until the transaction finishes.
-        f = asyncio.ensure_future(protocol.set('a', 'b'), loop=self.loop)
+        f = asyncio.ensure_future(protocol.set('a', 'b'))
 
         # Close transaction.
         await transaction.exec()
@@ -1892,8 +1892,8 @@ class RedisBytesProtocolTest(TestCase):
         async def sender():
             await protocol.publish(b'our_channel', b'message1')
 
-        f = asyncio.ensure_future(listener(), loop=self.loop)
-        await asyncio.sleep(.5, loop=self.loop)
+        f = asyncio.ensure_future(listener())
+        await asyncio.sleep(.5)
         await sender()
         transport2 = await f
         transport2.close()

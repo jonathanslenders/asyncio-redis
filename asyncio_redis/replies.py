@@ -45,7 +45,7 @@ class DictReply:
     ::
 
         for f in dict_reply:
-            key, value = yield from f
+            key, value = await f
             print(key, value)
     """
     def __init__(self, multibulk_reply):
@@ -57,24 +57,22 @@ class DictReply:
     def __iter__(self):
         """Yield a list of futures that yield { key: value } tuples
         """
-        @asyncio.coroutine
-        def getter(f):
+        async def getter(f):
             """Coroutine which processes one item
             """
-            key, value = yield from f
+            key, value = await f
             key, value = self._parse(key, value)
             return key, value
 
         for _ in range(self._result.count // 2):
             read_future = self._result._read(count=2)
-            yield ensure_future(getter(read_future), loop=self._result._loop)
+            yield ensure_future(getter(read_future))
 
-    @asyncio.coroutine
-    def asdict(self):
+    async def asdict(self):
         """
         Return the result as a Python dictionary.
         """
-        data = yield from self._result._read(count=self._result.count)
+        data = await self._result._read(count=self._result.count)
         return dict(self._parse(k, v) for k, v in zip(data[::2], data[1::2]))
 
     def __repr__(self):
@@ -99,7 +97,7 @@ class SetReply:
     ::
 
         for f in set_reply:
-            item = yield from f
+            item = await f
             print(item)
     """
     def __init__(self, multibulk_reply):
@@ -109,10 +107,9 @@ class SetReply:
         """ Yield a list of futures. """
         return iter(self._result)
 
-    @asyncio.coroutine
-    def asset(self):
+    async def asset(self):
         """ Return the result as a Python ``set``.  """
-        data = yield from self._result._read(count=self._result.count)
+        data = await self._result._read(count=self._result.count)
         return set(data)
 
     def __repr__(self):
@@ -129,7 +126,7 @@ class ListReply:
     ::
 
         for f in list_reply:
-            item = yield from f
+            item = await f
             print(item)
     """
     def __init__(self, multibulk_reply):
@@ -139,11 +136,9 @@ class ListReply:
         """ Yield a list of futures. """
         return iter(self._result)
 
-    @asyncio.coroutine
     def aslist(self):
-        """ Return the result as a Python ``list``. """
-        data = yield from self._result._read(count=self._result.count)
-        return data
+        """ Return a coroutine with the result as a Python ``list``. """
+        return self._result._read(count=self._result.count)
 
     def __repr__(self):
         return 'ListReply(length=%r)' % (self._result.count, )
@@ -246,7 +241,6 @@ class EvalScriptReply:
         self._protocol = protocol
         self._value = value
 
-    @asyncio.coroutine
     def return_value(self):
         """
         Coroutine that returns a Python representation of the script's return
@@ -254,8 +248,7 @@ class EvalScriptReply:
         """
         from asyncio_redis.protocol import MultiBulkReply
 
-        @asyncio.coroutine
-        def decode(obj):
+        async def decode(obj):
             if isinstance(obj, int):
                 return obj
 
@@ -266,13 +259,12 @@ class EvalScriptReply:
                 # Unpack MultiBulkReply recursively as Python list.
                 result = []
                 for f in obj:
-                    item = yield from f
-                    result.append((yield from decode(item)))
+                    item = await f
+                    result.append((await decode(item)))
                 return result
 
             else:
                 # Nonetype, or decoded bytes.
                 return obj
 
-        return (yield from decode(self._value))
-
+        return decode(self._value)

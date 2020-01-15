@@ -2,6 +2,7 @@ from .log import logger
 from .protocol import RedisProtocol, _all_commands
 import asyncio
 import logging
+import warnings
 
 
 class Connection:
@@ -11,30 +12,33 @@ class Connection:
 
 
     ::
-
-        connection = yield from Connection.create(host='localhost', port=6379)
-        result = yield from connection.set('key', 'value')
+        connection = await Connection.create(host='localhost', port=6379)
+        result = await connection.set('key', 'value')
     """
     @classmethod
-    @asyncio.coroutine
-    def create(cls, host='localhost', port=6379, *, password=None, db=0,
+    async def create(cls, host='localhost', port=6379, *, password=None, db=0,
                encoder=None, auto_reconnect=True, loop=None, protocol_class=RedisProtocol):
         """
-        :param host: Address, either host or unix domain socket path
-        :type host: str
-        :param port: TCP port. If port is 0 then host assumed to be unix socket path
-        :type port: int
-        :param password: Redis database password
-        :type password: bytes
-        :param db: Redis database
-        :type db: int
-        :param encoder: Encoder to use for encoding to or decoding from redis bytes to a native type.
-        :type encoder: :class:`~asyncio_redis.encoders.BaseEncoder` instance.
-        :param auto_reconnect: Enable auto reconnect
-        :type auto_reconnect: bool
-        :param loop: (optional) asyncio event loop.
-        :type protocol_class: :class:`~asyncio_redis.RedisProtocol`
-        :param protocol_class: (optional) redis protocol implementation
+        :param str host:
+            Address, either host or unix domain socket path
+        :param int port:
+            TCP port. If port is 0 then host assumed to be unix socket path
+        :param bytes password:
+            Redis database password
+        :param int db:
+            Redis database
+        :param encoder:
+            Encoder to use for encoding to or decoding from redis bytes to a native type.
+        :type encoder:
+            :class:`~asyncio_redis.encoders.BaseEncoder`
+        :param bool auto_reconnect:
+            Enable auto reconnect
+        :param loop:
+            (optional) asyncio event loop.
+        :param protocol_class:
+            (optional) redis protocol implementation
+        :type protocol_class:
+            :class:`~asyncio_redis.RedisProtocol`
         """
         assert port >= 0, "Unexpected port value: %r" % (port, )
         connection = cls()
@@ -51,7 +55,7 @@ class Connection:
         # Create protocol instance
         def connection_lost():
             if connection._auto_reconnect and not connection._closing:
-                asyncio.ensure_future(connection._reconnect(), loop=connection._loop)
+                connection._loop.create_task(connection._reconnect())
 
         # Create protocol instance
         connection.protocol = protocol_class(password=password, db=db, encoder=encoder,
@@ -59,9 +63,9 @@ class Connection:
 
         # Connect
         if connection._auto_reconnect:
-            yield from connection._reconnect()
+            await connection._reconnect()
         else:
-            yield from connection._connect()
+            await connection._connect()
 
         return connection
 
@@ -82,33 +86,34 @@ class Connection:
         """ When a connection failed. Increase the interval."""
         self._retry_interval = min(60, 1.5 * self._retry_interval)
 
-    @asyncio.coroutine
-    def _connect(self):
+    async def _connect(self):
         """
         Set up Redis connection.
         """
         logger.log(logging.INFO, 'Connecting to redis')
         if self.port:
-            yield from self._loop.create_connection(lambda: self.protocol, self.host, self.port)
+            await self._loop.create_connection(lambda: self.protocol, self.host, self.port)
         else:
-            yield from self._loop.create_unix_connection(lambda: self.protocol, self.host)
+            await self._loop.create_unix_connection(lambda: self.protocol, self.host)
 
-    @asyncio.coroutine
-    def _reconnect(self):
+    async def _reconnect(self):
         """
         Set up Redis re-connection.
         """
         while True:
             try:
-                yield from self._connect()
+                await self._connect()
                 self._reset_retry_interval()
                 return
             except OSError:
                 # Sleep and try again
                 self._increase_retry_interval()
                 interval = self._get_retry_interval()
-                logger.log(logging.INFO, 'Connecting to redis failed. Retrying in %i seconds' % interval)
-                yield from asyncio.sleep(interval, loop=self._loop)
+                logger.log(
+                    logging.INFO,
+                    f'Connecting to redis failed. Retrying in {interval} seconds',
+                )
+                await asyncio.sleep(interval)
 
     def __getattr__(self, name):
         # Only proxy commands.

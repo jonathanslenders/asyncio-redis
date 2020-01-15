@@ -1,4 +1,3 @@
-import asyncio
 from collections import deque
 
 __all__ = (
@@ -30,21 +29,17 @@ class Cursor:
     def __repr__(self):
         return '<%s %s>' % (self.__class__.__name__, self._name)
 
-    @asyncio.coroutine
-    def _fetch_more(self):
+    async def _fetch_more(self):
         """ Get next chunk of keys from Redis """
         if not self._done:
-            chunk = yield from self._scanfunc(self._cursor, self.count)
+            chunk = await self._scanfunc(self._cursor, self.count)
             self._cursor = chunk.new_cursor_pos
-
-            if chunk.new_cursor_pos == 0:
-                self._done = True
+            self._done = chunk.new_cursor_pos == 0
 
             for i in chunk.items:
                 self._queue.append(i)
 
-    @asyncio.coroutine
-    def fetchone(self):
+    async def fetchone(self):
         """
         Coroutines that returns the next item.
         It returns `None` after the last item.
@@ -54,19 +49,18 @@ class Cursor:
         # Redis can return a chunk of zero items, even when we're not yet finished.
         # See: https://github.com/jonathanslenders/asyncio-redis/issues/65#issuecomment-127026408
         while not self._queue and not self._done:
-            yield from self._fetch_more()
+            await self._fetch_more()
 
         # Return the next item.
         if self._queue:
             return self._queue.popleft()
 
-    @asyncio.coroutine
-    def fetchall(self):
+    async def fetchall(self):
         """ Coroutine that reads all the items in one list. """
         results = []
 
         while not self._done:
-            yield from self._fetch_more()
+            await self._fetch_more()
             results.extend(self._queue)
             self._queue.clear()
 
@@ -78,9 +72,8 @@ class SetCursor(Cursor):
     Cursor for walking through the results of a :func:`sscan
     <asyncio_redis.RedisProtocol.sscan>` query.
     """
-    @asyncio.coroutine
-    def fetchall(self):
-        result = yield from super().fetchall()
+    async def fetchall(self):
+        result = await super().fetchall()
         return set(result)
 
 
@@ -92,26 +85,24 @@ class DictCursor(Cursor):
     def _parse(self, key, value):
         return key, value
 
-    @asyncio.coroutine
-    def fetchone(self):
+    async def fetchone(self):
         """
         Get next { key: value } tuple
         It returns `None` after the last item.
         """
-        key = yield from super().fetchone()
-        value = yield from super().fetchone()
+        key = await super().fetchone()
+        value = await super().fetchone()
 
         if key is not None:
             key, value = self._parse(key, value)
             return { key: value }
 
-    @asyncio.coroutine
-    def fetchall(self):
+    async def fetchall(self):
         """ Coroutine that reads all the items in one dictionary. """
         results = {}
 
         while True:
-            i = yield from self.fetchone()
+            i = await self.fetchone()
             if i is None:
                 break
             else:

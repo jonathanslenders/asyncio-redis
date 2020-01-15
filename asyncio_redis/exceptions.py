@@ -38,6 +38,7 @@ class NoAvailableConnectionsInPoolError(NotConnectedError):
     When the connection pool has no available connections.
     """
 
+
 class ScriptKilledError(Error):
     """ Script was killed during an evalsha call. """
 

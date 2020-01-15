@@ -2202,49 +2202,37 @@ class NoGlobalLoopTest(TestCase):
     If we set the global loop variable to None, everything should still work.
     """
     def test_no_global_loop(self):
+        old_loop = asyncio.get_event_loop()
+        try:
+            # Remove global loop and create a new one.
+            asyncio.set_event_loop(None)
+            new_loop = asyncio.new_event_loop()
 
-        async def test():
-            connection = await Connection.create(host=HOST, port=PORT)
+            # ** Run code on the new loop. **
+
+            # Create connection
+            connection = new_loop.run_until_complete(Connection.create(host=HOST, port=PORT, loop=new_loop))
+
             self.assertIsInstance(connection, Connection)
             try:
                 # Delete keys
-                await connection.delete(['key1', 'key2'])
+                new_loop.run_until_complete(connection.delete(['key1', 'key2']))
 
                 # Get/set
-                await connection.set('key1', 'value')
-                result = await connection.get('key1')
+                new_loop.run_until_complete(connection.set('key1', 'value'))
+                result = new_loop.run_until_complete(connection.get('key1'))
                 self.assertEqual(result, 'value')
 
                 # hmset/hmget (something that uses a MultiBulkReply)
-                await connection.hmset('key2', {'a': 'b', 'c': 'd'})
-                result = await connection.hgetall_asdict('key2')
-                self.assertEqual(result, {'a': 'b', 'c': 'd'})
-
-                # Delete keys
-                await connection.delete(['key1', 'key2'])
-
-                # Get/set
-                await connection.set('key1', 'value')
-                result = await connection.get('key1')
-                self.assertEqual(result, 'value')
-
-                # hmset/hmget (something that uses a MultiBulkReply)
-                await connection.hmset('key2', { 'a': 'b', 'c': 'd' })
-                result = await connection.hgetall_asdict('key2')
+                new_loop.run_until_complete(connection.hmset('key2', { 'a': 'b', 'c': 'd' }))
+                result = new_loop.run_until_complete(connection.hgetall_asdict('key2'))
                 self.assertEqual(result, { 'a': 'b', 'c': 'd' })
-
             finally:
                 connection.close()
-                # Run loop briefly until socket has been closed.
-                await asyncio.sleep(0.1)
-
-        # Remove global loop and create a new one.
-        old_loop = asyncio.get_event_loop()
-        asyncio.set_event_loop(None)
-        new_loop = asyncio.new_event_loop()
-        try:
-            new_loop.run_until_complete(test())
         finally:
+            # Run loop briefly until socket has been closed. (call_soon behind the scenes.)
+            new_loop.run_until_complete(asyncio.sleep(.1))
+
             new_loop.close()
             asyncio.set_event_loop(old_loop)
 

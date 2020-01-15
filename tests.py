@@ -108,443 +108,443 @@ class RedisProtocolTest(TestCase):
     async def test_ping(self, transport, protocol):
         result = await protocol.ping()
         self.assertEqual(result, StatusReply('PONG'))
-        self.assertEqual(repr(result), u"StatusReply(status='PONG')")
+        self.assertEqual(repr(result), "StatusReply(status='PONG')")
 
     @redis_test
     async def test_echo(self, transport, protocol):
-        result = await protocol.echo(u'my string')
-        self.assertEqual(result, u'my string')
+        result = await protocol.echo('my string')
+        self.assertEqual(result, 'my string')
 
     @redis_test
     async def test_set_and_get(self, transport, protocol):
         # Set
-        value = await protocol.set(u'my_key', u'my_value')
+        value = await protocol.set('my_key', 'my_value')
         self.assertEqual(value, StatusReply('OK'))
 
         # Get
-        value = await protocol.get(u'my_key')
-        self.assertEqual(value, u'my_value')
+        value = await protocol.get('my_key')
+        self.assertEqual(value, 'my_value')
 
         # Getset
-        value = await protocol.getset(u'my_key', u'new_value')
-        self.assertEqual(value, u'my_value')
+        value = await protocol.getset('my_key', 'new_value')
+        self.assertEqual(value, 'my_value')
 
-        value = await protocol.get(u'my_key')
-        self.assertEqual(value, u'new_value')
+        value = await protocol.get('my_key')
+        self.assertEqual(value, 'new_value')
 
     @redis_test
     async def test_extended_set(self, transport, protocol):
-        await protocol.delete([u'my_key', u'other_key'])
+        await protocol.delete(['my_key', 'other_key'])
         # set with expire only if not exists
-        value = await protocol.set(u'my_key', u'my_value',
+        value = await protocol.set('my_key', 'my_value',
                                    expire=10, only_if_not_exists=True)
         self.assertEqual(value, StatusReply('OK'))
-        value = await protocol.ttl(u'my_key')
+        value = await protocol.ttl('my_key')
         self.assertIn(value, (10, 9))
 
         # check NX flag for SET command
-        value = await protocol.set(u'my_key', u'my_value',
+        value = await protocol.set('my_key', 'my_value',
                                    expire=10, only_if_not_exists=True)
         self.assertIsNone(value)
 
         # check XX flag for SET command
-        value = await protocol.set(u'other_key', 'some_value', only_if_exists=True)
+        value = await protocol.set('other_key', 'some_value', only_if_exists=True)
 
         self.assertIsNone(value)
 
         # set with pexpire only if key exists
-        value = await protocol.set(u'my_key', u'other_value',
+        value = await protocol.set('my_key', 'other_value',
                                    pexpire=20000, only_if_exists=True)
         self.assertEqual(value, StatusReply('OK'))
 
-        value = await protocol.get(u'my_key')
+        value = await protocol.get('my_key')
 
-        self.assertEqual(value, u'other_value')
+        self.assertEqual(value, 'other_value')
 
-        value = await protocol.ttl(u'my_key')
+        value = await protocol.ttl('my_key')
         self.assertIn(value, (20, 19))
 
     @redis_test
     async def test_setex(self, transport, protocol):
         # Set
-        value = await protocol.setex(u'my_key', 10, u'my_value')
+        value = await protocol.setex('my_key', 10, 'my_value')
         self.assertEqual(value, StatusReply('OK'))
 
         # TTL
-        value = await protocol.ttl(u'my_key')
+        value = await protocol.ttl('my_key')
         self.assertIn(value, (10, 9)) # may be some delay
 
         # Get
-        value = await protocol.get(u'my_key')
-        self.assertEqual(value, u'my_value')
+        value = await protocol.get('my_key')
+        self.assertEqual(value, 'my_value')
 
     @redis_test
     async def test_setnx(self, transport, protocol):
-        await protocol.delete([u'my_key'])
+        await protocol.delete(['my_key'])
 
         # Setnx while key does not exists
-        value = await protocol.setnx(u'my_key', u'my_value')
+        value = await protocol.setnx('my_key', 'my_value')
         self.assertEqual(value, True)
 
         # Get
-        value = await protocol.get(u'my_key')
-        self.assertEqual(value, u'my_value')
+        value = await protocol.get('my_key')
+        self.assertEqual(value, 'my_value')
 
         # Setnx if key exists
-        value = await protocol.setnx(u'my_key', u'other_value')
+        value = await protocol.setnx('my_key', 'other_value')
         self.assertEqual(value, False)
 
         # Get old value
-        value = await protocol.get(u'my_key')
-        self.assertEqual(value, u'my_value')
+        value = await protocol.get('my_key')
+        self.assertEqual(value, 'my_value')
 
     @redis_test
     async def test_special_characters(self, transport, protocol):
         # Test some special unicode values and spaces.
-        value = u'my value with special chars " # éçåø´¨åø´h '
+        value = 'my value with special chars " # éçåø´¨åø´h '
 
-        result = await protocol.set(u'my key with spaces', value)
-        result = await protocol.get(u'my key with spaces')
+        result = await protocol.set('my key with spaces', value)
+        result = await protocol.get('my key with spaces')
         self.assertEqual(result, value)
 
         # Test newlines
-        value = u'ab\ncd\ref\r\ngh'
-        result = await protocol.set(u'my-key', value)
-        result = await protocol.get(u'my-key')
+        value = 'ab\ncd\ref\r\ngh'
+        result = await protocol.set('my-key', value)
+        result = await protocol.get('my-key')
         self.assertEqual(result, value)
 
     @redis_test
     async def test_mget(self, transport, protocol):
         # mget
-        await protocol.set(u'my_key', u'a')
-        await protocol.set(u'my_key2', u'b')
-        result = await protocol.mget([ u'my_key', u'my_key2', u'not_exists'])
+        await protocol.set('my_key', 'a')
+        await protocol.set('my_key2', 'b')
+        result = await protocol.mget([ 'my_key', 'my_key2', 'not_exists'])
         self.assertIsInstance(result, ListReply)
         result = await result.aslist()
-        self.assertEqual(result, [u'a', u'b', None])
+        self.assertEqual(result, ['a', 'b', None])
 
     @redis_test
     async def test_strlen(self, transport, protocol):
-        await protocol.delete([ u'my_key' ])
-        await protocol.delete([ u'my_key2' ])
-        await protocol.delete([ u'my_key3' ])
-        await protocol.set(u'my_key', u'my_value')
-        await protocol.hset(u'my_key3', u'a', u'b')
+        await protocol.delete([ 'my_key' ])
+        await protocol.delete([ 'my_key2' ])
+        await protocol.delete([ 'my_key3' ])
+        await protocol.set('my_key', 'my_value')
+        await protocol.hset('my_key3', 'a', 'b')
 
         # strlen
-        value = await protocol.strlen(u'my_key')
-        self.assertEqual(value, len(u'my_value'))
+        value = await protocol.strlen('my_key')
+        self.assertEqual(value, len('my_value'))
 
-        value = await protocol.strlen(u'my_key2')
+        value = await protocol.strlen('my_key2')
         self.assertEqual(value, 0)
 
         with self.assertRaises(ErrorReply):
-            await protocol.strlen(u'my_key3')
+            await protocol.strlen('my_key3')
         # Redis exception: b'ERR Operation against a key holding the wrong kind of value')
 
     @redis_test
     async def test_exists_and_delete(self, transport, protocol):
         # Set
-        await protocol.set(u'my_key', u'aaa')
-        value = await protocol.append(u'my_key', u'bbb')
+        await protocol.set('my_key', 'aaa')
+        value = await protocol.append('my_key', 'bbb')
         self.assertEqual(value, 6) # Total length
-        value = await protocol.get(u'my_key')
-        self.assertEqual(value, u'aaabbb')
+        value = await protocol.get('my_key')
+        self.assertEqual(value, 'aaabbb')
 
     @redis_test
     async def test_exists_and_delete2(self, transport, protocol):
         # Exists
-        value = await protocol.exists(u'unknown_key')
+        value = await protocol.exists('unknown_key')
         self.assertEqual(value, False)
 
         # Set
-        value = await protocol.set(u'known_key', u'value')
-        value = await protocol.exists(u'known_key')
+        value = await protocol.set('known_key', 'value')
+        value = await protocol.exists('known_key')
         self.assertEqual(value, True)
 
         # Delete
-        value = await protocol.set(u'known_key2', u'value')
-        value = await protocol.delete([ u'known_key', u'known_key2' ])
+        value = await protocol.set('known_key2', 'value')
+        value = await protocol.delete([ 'known_key', 'known_key2' ])
         self.assertEqual(value, 2)
 
-        value = await protocol.delete([ u'known_key' ])
+        value = await protocol.delete([ 'known_key' ])
         self.assertEqual(value, 0)
 
-        value = await protocol.exists(u'known_key')
+        value = await protocol.exists('known_key')
         self.assertEqual(value, False)
 
     @redis_test
     async def test_rename(self, transport, protocol):
         # Set
-        value = await protocol.set(u'old_key', u'value')
-        value = await protocol.exists(u'old_key')
+        value = await protocol.set('old_key', 'value')
+        value = await protocol.exists('old_key')
         self.assertEqual(value, True)
 
         # Rename
-        value = await protocol.rename(u'old_key', u'new_key')
+        value = await protocol.rename('old_key', 'new_key')
         self.assertEqual(value, StatusReply('OK'))
 
-        value = await protocol.exists(u'old_key')
+        value = await protocol.exists('old_key')
         self.assertEqual(value, False)
-        value = await protocol.exists(u'new_key')
+        value = await protocol.exists('new_key')
         self.assertEqual(value, True)
 
-        value = await protocol.get(u'old_key')
+        value = await protocol.get('old_key')
         self.assertEqual(value, None)
-        value = await protocol.get(u'new_key')
+        value = await protocol.get('new_key')
         self.assertEqual(value, 'value')
 
         # RenameNX
-        await protocol.delete([ u'key3' ])
-        value = await protocol.renamenx(u'new_key', u'key3')
+        await protocol.delete([ 'key3' ])
+        value = await protocol.renamenx('new_key', 'key3')
         self.assertEqual(value, 1)
 
-        await protocol.set(u'key4', u'existing-value')
-        value = await protocol.renamenx(u'key3', u'key4')
+        await protocol.set('key4', 'existing-value')
+        value = await protocol.renamenx('key3', 'key4')
         self.assertEqual(value, 0)
 
     @redis_test
     async def test_expire(self, transport, protocol):
         # Set
-        value = await protocol.set(u'key', u'value')
+        value = await protocol.set('key', 'value')
 
         # Expire (10s)
-        value = await protocol.expire(u'key', 10)
+        value = await protocol.expire('key', 10)
         self.assertEqual(value, 1)
 
-        value = await protocol.exists(u'key')
+        value = await protocol.exists('key')
         self.assertEqual(value, True)
 
         # TTL
-        value = await protocol.ttl(u'key')
+        value = await protocol.ttl('key')
         self.assertIsInstance(value, int)
         self.assertLessEqual(value, 10)
 
         # PTTL
-        value = await protocol.pttl(u'key')
+        value = await protocol.pttl('key')
         self.assertIsInstance(value, int)
         self.assertLessEqual(value, 10 * 1000)
 
         # Pexpire
-        value = await protocol.pexpire(u'key', 10*1000)
+        value = await protocol.pexpire('key', 10*1000)
         self.assertEqual(value, 1) # XXX: check this
-        value = await protocol.pttl(u'key')
+        value = await protocol.pttl('key')
         self.assertLessEqual(value, 10 * 1000)
 
         # Expire (1s) and wait
-        value = await protocol.expire(u'key', 1)
-        value = await protocol.exists(u'key')
+        value = await protocol.expire('key', 1)
+        value = await protocol.exists('key')
         self.assertEqual(value, True)
 
         await asyncio.sleep(2)
 
-        value = await protocol.exists(u'key')
+        value = await protocol.exists('key')
         self.assertEqual(value, False)
 
         # Test persist
-        await protocol.set(u'key', u'value')
-        await protocol.expire(u'key', 1)
-        value = await protocol.persist(u'key')
+        await protocol.set('key', 'value')
+        await protocol.expire('key', 1)
+        value = await protocol.persist('key')
         self.assertEqual(value, 1)
-        value = await protocol.persist(u'key')
+        value = await protocol.persist('key')
         self.assertEqual(value, 0)
 
         await asyncio.sleep(2)
 
-        value = await protocol.exists(u'key')
+        value = await protocol.exists('key')
         self.assertEqual(value, True)
 
         # Test expireat
-        value = await protocol.expireat(u'key', 1293840000)
+        value = await protocol.expireat('key', 1293840000)
         self.assertIsInstance(value, int)
 
         # Test pexpireat
-        value = await protocol.pexpireat(u'key', 1555555555005)
+        value = await protocol.pexpireat('key', 1555555555005)
         self.assertIsInstance(value, int)
 
     @redis_test
     async def test_set(self, transport, protocol):
         # Create set
-        value = await protocol.delete([ u'our_set' ])
-        value = await protocol.sadd(u'our_set', [u'a', u'b'])
-        value = await protocol.sadd(u'our_set', [u'c'])
+        value = await protocol.delete([ 'our_set' ])
+        value = await protocol.sadd('our_set', ['a', 'b'])
+        value = await protocol.sadd('our_set', ['c'])
         self.assertEqual(value, 1)
 
         # scard
-        value = await protocol.scard(u'our_set')
+        value = await protocol.scard('our_set')
         self.assertEqual(value, 3)
 
         # Smembers
-        value = await protocol.smembers(u'our_set')
+        value = await protocol.smembers('our_set')
         self.assertIsInstance(value, SetReply)
-        self.assertEqual(repr(value), u"SetReply(length=3)")
+        self.assertEqual(repr(value), "SetReply(length=3)")
         value = await value.asset()
-        self.assertEqual(value, { u'a', u'b', u'c' })
+        self.assertEqual(value, { 'a', 'b', 'c' })
 
         # sismember
-        value = await protocol.sismember(u'our_set', 'a')
+        value = await protocol.sismember('our_set', 'a')
         self.assertEqual(value, True)
-        value = await protocol.sismember(u'our_set', 'd')
+        value = await protocol.sismember('our_set', 'd')
         self.assertEqual(value, False)
 
         # Intersection, union and diff
-        await protocol.delete([ u'set2' ])
-        await protocol.sadd(u'set2', [u'b', u'c', u'd', u'e'])
+        await protocol.delete([ 'set2' ])
+        await protocol.sadd('set2', ['b', 'c', 'd', 'e'])
 
-        value = await protocol.sunion([ u'our_set', 'set2' ])
+        value = await protocol.sunion([ 'our_set', 'set2' ])
         self.assertIsInstance(value, SetReply)
         value = await value.asset()
-        self.assertEqual(value, set([u'a', u'b', u'c', u'd', u'e']))
+        self.assertEqual(value, {'a', 'b', 'c', 'd', 'e'})
 
-        value = await protocol.sinter([ u'our_set', 'set2' ])
+        value = await protocol.sinter([ 'our_set', 'set2' ])
         value = await value.asset()
-        self.assertEqual(value, set([u'b', u'c']))
+        self.assertEqual(value, {'b', 'c'})
 
-        value = await protocol.sdiff([ u'our_set', 'set2' ])
+        value = await protocol.sdiff([ 'our_set', 'set2' ])
         self.assertIsInstance(value, SetReply)
         value = await value.asset()
-        self.assertEqual(value, set([u'a']))
-        value = await protocol.sdiff([ u'set2', u'our_set' ])
+        self.assertEqual(value, {'a'})
+        value = await protocol.sdiff([ 'set2', 'our_set' ])
         value = await value.asset()
-        self.assertEqual(value, set([u'd', u'e']))
+        self.assertEqual(value, {'d', 'e'})
 
         # Interstore
-        value = await protocol.sinterstore(u'result', [u'our_set', 'set2'])
+        value = await protocol.sinterstore('result', ['our_set', 'set2'])
         self.assertEqual(value, 2)
-        value = await protocol.smembers(u'result')
+        value = await protocol.smembers('result')
         self.assertIsInstance(value, SetReply)
         value = await value.asset()
-        self.assertEqual(value, set([u'b', u'c']))
+        self.assertEqual(value, {'b', 'c'})
 
         # Unionstore
-        value = await protocol.sunionstore(u'result', [u'our_set', 'set2'])
+        value = await protocol.sunionstore('result', ['our_set', 'set2'])
         self.assertEqual(value, 5)
-        value = await protocol.smembers(u'result')
+        value = await protocol.smembers('result')
         self.assertIsInstance(value, SetReply)
         value = await value.asset()
-        self.assertEqual(value, set([u'a', u'b', u'c', u'd', u'e']))
+        self.assertEqual(value, {'a', 'b', 'c', 'd', 'e'})
 
         # Sdiffstore
-        value = await protocol.sdiffstore(u'result', [u'set2', 'our_set'])
+        value = await protocol.sdiffstore('result', ['set2', 'our_set'])
         self.assertEqual(value, 2)
-        value = await protocol.smembers(u'result')
+        value = await protocol.smembers('result')
         self.assertIsInstance(value, SetReply)
         value = await value.asset()
-        self.assertEqual(value, set([u'd', u'e']))
+        self.assertEqual(value, {'d', 'e'})
 
     @redis_test
     async def test_srem(self, transport, protocol):
-        await protocol.delete([ u'our_set' ])
-        await protocol.sadd(u'our_set', [u'a', u'b', u'c', u'd'])
+        await protocol.delete([ 'our_set' ])
+        await protocol.sadd('our_set', ['a', 'b', 'c', 'd'])
 
         # Call srem
-        result = await protocol.srem(u'our_set', [u'b', u'c'])
+        result = await protocol.srem('our_set', ['b', 'c'])
         self.assertEqual(result, 2)
 
-        result = await protocol.smembers(u'our_set')
+        result = await protocol.smembers('our_set')
         self.assertIsInstance(result, SetReply)
         result = await result.asset()
-        self.assertEqual(result, set([u'a', u'd']))
+        self.assertEqual(result, {'a', 'd'})
 
     @redis_test
     async def test_spop(self, transport, protocol):
         async def setup():
-            await protocol.delete([ u'my_set' ])
-            await protocol.sadd(u'my_set', [u'value1'])
-            await protocol.sadd(u'my_set', [u'value2'])
+            await protocol.delete([ 'my_set' ])
+            await protocol.sadd('my_set', ['value1'])
+            await protocol.sadd('my_set', ['value2'])
 
         # Test spop
         await setup()
-        result = await protocol.spop(u'my_set')
-        self.assertIn(result, [u'value1', u'value2'])
-        result = await protocol.smembers(u'my_set')
+        result = await protocol.spop('my_set')
+        self.assertIn(result, ['value1', 'value2'])
+        result = await protocol.smembers('my_set')
         self.assertIsInstance(result, SetReply)
         result = await result.asset()
         self.assertEqual(len(result), 1)
 
         # Test srandmember
         await setup()
-        result = await protocol.srandmember(u'my_set')
+        result = await protocol.srandmember('my_set')
         self.assertIsInstance(result, SetReply)
         result = await result.asset()
-        self.assertIn(list(result)[0], [u'value1', u'value2'])
-        result = await protocol.smembers(u'my_set')
+        self.assertIn(list(result)[0], ['value1', 'value2'])
+        result = await protocol.smembers('my_set')
         self.assertIsInstance(result, SetReply)
         result = await result.asset()
         self.assertEqual(len(result), 2)
 
         # Popping from non-existing key should return None.
-        await protocol.delete([ u'my_set' ])
-        result = await protocol.spop(u'my_set')
+        await protocol.delete([ 'my_set' ])
+        result = await protocol.spop('my_set')
         self.assertEqual(result, None)
 
     @redis_test
     async def test_type(self, transport, protocol):
         # Setup
-        await protocol.delete([ u'key1' ])
-        await protocol.delete([ u'key2' ])
-        await protocol.delete([ u'key3' ])
+        await protocol.delete([ 'key1' ])
+        await protocol.delete([ 'key2' ])
+        await protocol.delete([ 'key3' ])
 
-        await protocol.set(u'key1', u'value')
-        await protocol.lpush(u'key2', [u'value'])
-        await protocol.sadd(u'key3', [u'value'])
+        await protocol.set('key1', 'value')
+        await protocol.lpush('key2', ['value'])
+        await protocol.sadd('key3', ['value'])
 
         # Test types
-        value = await protocol.type(u'key1')
+        value = await protocol.type('key1')
         self.assertEqual(value, StatusReply('string'))
 
-        value = await protocol.type(u'key2')
+        value = await protocol.type('key2')
         self.assertEqual(value, StatusReply('list'))
 
-        value = await protocol.type(u'key3')
+        value = await protocol.type('key3')
         self.assertEqual(value, StatusReply('set'))
 
     @redis_test
     async def test_list(self, transport, protocol):
         # Create list
-        await protocol.delete([ u'my_list' ])
-        value = await protocol.lpush(u'my_list', [u'v1', u'v2'])
-        value = await protocol.rpush(u'my_list', [u'v3', u'v4'])
+        await protocol.delete([ 'my_list' ])
+        value = await protocol.lpush('my_list', ['v1', 'v2'])
+        value = await protocol.rpush('my_list', ['v3', 'v4'])
         self.assertEqual(value, 4)
 
         # lrange
-        value = await protocol.lrange(u'my_list')
+        value = await protocol.lrange('my_list')
         self.assertIsInstance(value, ListReply)
-        self.assertEqual(repr(value), u"ListReply(length=4)")
+        self.assertEqual(repr(value), "ListReply(length=4)")
         value = await value.aslist()
-        self.assertEqual(value, [ u'v2', 'v1', 'v3', 'v4'])
+        self.assertEqual(value, [ 'v2', 'v1', 'v3', 'v4'])
 
         # lset
-        value = await protocol.lset(u'my_list', 3, 'new-value')
+        value = await protocol.lset('my_list', 3, 'new-value')
         self.assertEqual(value, StatusReply('OK'))
 
-        value = await protocol.lrange(u'my_list')
+        value = await protocol.lrange('my_list')
         self.assertIsInstance(value, ListReply)
         value = await value.aslist()
-        self.assertEqual(value, [ u'v2', 'v1', 'v3', 'new-value'])
+        self.assertEqual(value, [ 'v2', 'v1', 'v3', 'new-value'])
 
         # lindex
-        value = await protocol.lindex(u'my_list', 1)
+        value = await protocol.lindex('my_list', 1)
         self.assertEqual(value, 'v1')
-        value = await protocol.lindex(u'my_list', 10) # Unknown index
+        value = await protocol.lindex('my_list', 10) # Unknown index
         self.assertEqual(value, None)
 
         # Length
-        value = await protocol.llen(u'my_list')
+        value = await protocol.llen('my_list')
         self.assertEqual(value, 4)
 
         # Remove element from list.
-        value = await protocol.lrem(u'my_list', value=u'new-value')
+        value = await protocol.lrem('my_list', value='new-value')
         self.assertEqual(value, 1)
 
         # Pop
-        value = await protocol.rpop(u'my_list')
-        self.assertEqual(value, u'v3')
-        value = await protocol.lpop(u'my_list')
-        self.assertEqual(value, u'v2')
-        value = await protocol.lpop(u'my_list')
-        self.assertEqual(value, u'v1')
-        value = await protocol.lpop(u'my_list')
+        value = await protocol.rpop('my_list')
+        self.assertEqual(value, 'v3')
+        value = await protocol.lpop('my_list')
+        self.assertEqual(value, 'v2')
+        value = await protocol.lpop('my_list')
+        self.assertEqual(value, 'v1')
+        value = await protocol.lpop('my_list')
         self.assertEqual(value, None)
 
         # Blocking lpop
@@ -552,196 +552,196 @@ class RedisProtocolTest(TestCase):
 
         async def blpop():
             test_order.append('#1')
-            value = await protocol.blpop([u'my_list'])
+            value = await protocol.blpop(['my_list'])
             self.assertIsInstance(value, BlockingPopReply)
-            self.assertEqual(value.list_name, u'my_list')
-            self.assertEqual(value.value, u'value')
+            self.assertEqual(value.list_name, 'my_list')
+            self.assertEqual(value.value, 'value')
             test_order.append('#3')
         f = asyncio.ensure_future(blpop())
 
         transport2, protocol2 = await connect()
 
         test_order.append('#2')
-        await protocol2.rpush(u'my_list', [u'value'])
+        await protocol2.rpush('my_list', ['value'])
         await f
         self.assertEqual(test_order, ['#1', '#2', '#3'])
 
         # Blocking rpop
         async def brpop():
-            value = await protocol.brpop([u'my_list'])
+            value = await protocol.brpop(['my_list'])
             self.assertIsInstance(value, BlockingPopReply)
-            self.assertEqual(value.list_name, u'my_list')
-            self.assertEqual(value.value, u'value2')
+            self.assertEqual(value.list_name, 'my_list')
+            self.assertEqual(value.value, 'value2')
         f = asyncio.ensure_future(brpop())
 
-        await protocol2.rpush(u'my_list', [u'value2'])
+        await protocol2.rpush('my_list', ['value2'])
         await f
 
         transport2.close()
 
     @redis_test
     async def test_brpoplpush(self, transport, protocol):
-        await protocol.delete([ u'from' ])
-        await protocol.delete([ u'to' ])
-        await protocol.lpush(u'to', [u'1'])
+        await protocol.delete([ 'from' ])
+        await protocol.delete([ 'to' ])
+        await protocol.lpush('to', ['1'])
 
         async def brpoplpush():
-            result = await protocol.brpoplpush(u'from', u'to')
-            self.assertEqual(result, u'my_value')
+            result = await protocol.brpoplpush('from', 'to')
+            self.assertEqual(result, 'my_value')
         f = asyncio.ensure_future(brpoplpush())
 
         transport2, protocol2 = await connect()
-        await protocol2.rpush(u'from', [u'my_value'])
+        await protocol2.rpush('from', ['my_value'])
         await f
 
         transport2.close()
 
     @redis_test
     async def test_blocking_timeout(self, transport, protocol):
-        await protocol.delete([u'from'])
-        await protocol.delete([u'to'])
+        await protocol.delete(['from'])
+        await protocol.delete(['to'])
 
         # brpoplpush
         with self.assertRaises(TimeoutError) as e:
-            await protocol.brpoplpush(u'from', u'to', 1)
+            await protocol.brpoplpush('from', 'to', 1)
         self.assertIn('Timeout in brpoplpush', e.exception.args[0])
 
         # brpop
         with self.assertRaises(TimeoutError) as e:
-            await protocol.brpop([u'from'], 1)
+            await protocol.brpop(['from'], 1)
         self.assertIn('Timeout in blocking pop', e.exception.args[0])
 
         # blpop
         with self.assertRaises(TimeoutError) as e:
-            await protocol.blpop([u'from'], 1)
+            await protocol.blpop(['from'], 1)
         self.assertIn('Timeout in blocking pop', e.exception.args[0])
 
     @redis_test
     async def test_linsert(self, transport, protocol):
         # Prepare
-        await protocol.delete([ u'my_list' ])
-        await protocol.rpush(u'my_list', [u'1'])
-        await protocol.rpush(u'my_list', [u'2'])
-        await protocol.rpush(u'my_list', [u'3'])
+        await protocol.delete([ 'my_list' ])
+        await protocol.rpush('my_list', ['1'])
+        await protocol.rpush('my_list', ['2'])
+        await protocol.rpush('my_list', ['3'])
 
         # Insert after
-        result = await protocol.linsert(u'my_list', u'1', u'A')
+        result = await protocol.linsert('my_list', '1', 'A')
         self.assertEqual(result, 4)
-        result = await protocol.lrange(u'my_list')
+        result = await protocol.lrange('my_list')
         self.assertIsInstance(result, ListReply)
         result = await result.aslist()
-        self.assertEqual(result, [u'1', u'A', u'2', u'3'])
+        self.assertEqual(result, ['1', 'A', '2', '3'])
 
         # Insert before
-        result = await protocol.linsert(u'my_list', u'3', u'B', before=True)
+        result = await protocol.linsert('my_list', '3', 'B', before=True)
         self.assertEqual(result, 5)
-        result = await protocol.lrange(u'my_list')
+        result = await protocol.lrange('my_list')
         self.assertIsInstance(result, ListReply)
         result = await result.aslist()
-        self.assertEqual(result, [u'1', u'A', u'2', u'B', u'3'])
+        self.assertEqual(result, ['1', 'A', '2', 'B', '3'])
 
     @redis_test
     async def test_rpoplpush(self, transport, protocol):
         # Prepare
-        await protocol.delete([ u'my_list' ])
-        await protocol.delete([ u'my_list2' ])
-        await protocol.lpush(u'my_list', [u'value'])
-        await protocol.lpush(u'my_list2', [u'value2'])
+        await protocol.delete([ 'my_list' ])
+        await protocol.delete([ 'my_list2' ])
+        await protocol.lpush('my_list', ['value'])
+        await protocol.lpush('my_list2', ['value2'])
 
-        value = await protocol.llen(u'my_list')
-        value2 = await protocol.llen(u'my_list2')
+        value = await protocol.llen('my_list')
+        value2 = await protocol.llen('my_list2')
         self.assertEqual(value, 1)
         self.assertEqual(value2, 1)
 
         # rpoplpush
-        result = await protocol.rpoplpush(u'my_list', u'my_list2')
-        self.assertEqual(result, u'value')
-        result = await protocol.rpoplpush(u'my_list', u'my_list2')
+        result = await protocol.rpoplpush('my_list', 'my_list2')
+        self.assertEqual(result, 'value')
+        result = await protocol.rpoplpush('my_list', 'my_list2')
         self.assertEqual(result, None)
 
     @redis_test
     async def test_pushx(self, transport, protocol):
-        await protocol.delete([ u'my_list' ])
+        await protocol.delete([ 'my_list' ])
 
         # rpushx
-        result = await protocol.rpushx(u'my_list', u'a')
+        result = await protocol.rpushx('my_list', 'a')
         self.assertEqual(result, 0)
 
-        await protocol.rpush(u'my_list', [u'a'])
-        result = await protocol.rpushx(u'my_list', u'a')
+        await protocol.rpush('my_list', ['a'])
+        result = await protocol.rpushx('my_list', 'a')
         self.assertEqual(result, 2)
 
         # lpushx
-        await protocol.delete([ u'my_list' ])
-        result = await protocol.lpushx(u'my_list', u'a')
+        await protocol.delete([ 'my_list' ])
+        result = await protocol.lpushx('my_list', 'a')
         self.assertEqual(result, 0)
 
-        await protocol.rpush(u'my_list', [u'a'])
-        result = await protocol.lpushx(u'my_list', u'a')
+        await protocol.rpush('my_list', ['a'])
+        result = await protocol.lpushx('my_list', 'a')
         self.assertEqual(result, 2)
 
     @redis_test
     async def test_ltrim(self, transport, protocol):
-        await protocol.delete([ u'my_list' ])
-        await protocol.lpush(u'my_list', [u'a'])
-        await protocol.lpush(u'my_list', [u'b'])
-        result = await protocol.ltrim(u'my_list')
+        await protocol.delete([ 'my_list' ])
+        await protocol.lpush('my_list', ['a'])
+        await protocol.lpush('my_list', ['b'])
+        result = await protocol.ltrim('my_list')
         self.assertEqual(result, StatusReply('OK'))
 
     @redis_test
     async def test_hashes(self, transport, protocol):
-        await protocol.delete([ u'my_hash' ])
+        await protocol.delete([ 'my_hash' ])
 
         # Set in hash
-        result = await protocol.hset(u'my_hash', u'key', u'value')
+        result = await protocol.hset('my_hash', 'key', 'value')
         self.assertEqual(result, 1)
-        result = await protocol.hset(u'my_hash', u'key2', u'value2')
+        result = await protocol.hset('my_hash', 'key2', 'value2')
         self.assertEqual(result, 1)
 
         # hlen
-        result = await protocol.hlen(u'my_hash')
+        result = await protocol.hlen('my_hash')
         self.assertEqual(result, 2)
 
         # hexists
-        result = await protocol.hexists(u'my_hash', u'key')
+        result = await protocol.hexists('my_hash', 'key')
         self.assertEqual(result, True)
-        result = await protocol.hexists(u'my_hash', u'unknown_key')
+        result = await protocol.hexists('my_hash', 'unknown_key')
         self.assertEqual(result, False)
 
         # Get from hash
-        result = await protocol.hget(u'my_hash', u'key2')
-        self.assertEqual(result, u'value2')
-        result = await protocol.hget(u'my_hash', u'unknown-key')
+        result = await protocol.hget('my_hash', 'key2')
+        self.assertEqual(result, 'value2')
+        result = await protocol.hget('my_hash', 'unknown-key')
         self.assertEqual(result, None)
 
-        result = await protocol.hgetall(u'my_hash')
+        result = await protocol.hgetall('my_hash')
         self.assertIsInstance(result, DictReply)
-        self.assertEqual(repr(result), u"DictReply(length=2)")
+        self.assertEqual(repr(result), "DictReply(length=2)")
         result = await result.asdict()
-        self.assertEqual(result, {u'key': u'value', u'key2': u'value2' })
+        self.assertEqual(result, {'key': 'value', 'key2': 'value2' })
 
-        result = await protocol.hkeys(u'my_hash')
+        result = await protocol.hkeys('my_hash')
         self.assertIsInstance(result, SetReply)
         result = await result.asset()
         self.assertIsInstance(result, set)
-        self.assertEqual(result, {u'key', u'key2' })
+        self.assertEqual(result, {'key', 'key2' })
 
-        result = await protocol.hvals(u'my_hash')
+        result = await protocol.hvals('my_hash')
         self.assertIsInstance(result, ListReply)
         result = await result.aslist()
         self.assertIsInstance(result, list)
-        self.assertEqual(set(result), {u'value', u'value2' })
+        self.assertEqual(set(result), {'value', 'value2' })
 
         # HDel
-        result = await protocol.hdel(u'my_hash', [u'key2'])
+        result = await protocol.hdel('my_hash', ['key2'])
         self.assertEqual(result, 1)
-        result = await protocol.hdel(u'my_hash', [u'key2'])
+        result = await protocol.hdel('my_hash', ['key2'])
         self.assertEqual(result, 0)
 
-        result = await protocol.hkeys(u'my_hash')
+        result = await protocol.hkeys('my_hash')
         self.assertIsInstance(result, SetReply)
         result = await result.asset()
-        self.assertEqual(result, { u'key' })
+        self.assertEqual(result, { 'key' })
 
     @redis_test
     async def test_keys(self, transport, protocol):
@@ -751,7 +751,7 @@ class RedisProtocolTest(TestCase):
         await protocol.set('our-keytest-key3', 'a')
 
         # Test 'keys'
-        multibulk = await protocol.keys(u'our-keytest-key*')
+        multibulk = await protocol.keys('our-keytest-key*')
         all_keys = await asyncio.gather(*multibulk)
         self.assertEqual(set(all_keys), {
                             'our-keytest-key1',
@@ -760,46 +760,46 @@ class RedisProtocolTest(TestCase):
 
     @redis_test
     async def test_hmset_get(self, transport, protocol):
-        await protocol.delete([ u'my_hash' ])
-        await protocol.hset(u'my_hash', u'a', u'1')
+        await protocol.delete([ 'my_hash' ])
+        await protocol.hset('my_hash', 'a', '1')
 
         # HMSet
-        result = await protocol.hmset(u'my_hash', { 'b':'2', 'c': '3'})
+        result = await protocol.hmset('my_hash', { 'b':'2', 'c': '3'})
         self.assertEqual(result, StatusReply('OK'))
 
         # HMGet
-        result = await protocol.hmget(u'my_hash', [u'a', u'b', u'c'])
+        result = await protocol.hmget('my_hash', ['a', 'b', 'c'])
         self.assertIsInstance(result, ListReply)
         result = await result.aslist()
-        self.assertEqual(result, [ u'1', u'2', u'3'])
+        self.assertEqual(result, [ '1', '2', '3'])
 
-        result = await protocol.hmget(u'my_hash', [u'c', u'b'])
+        result = await protocol.hmget('my_hash', ['c', 'b'])
         self.assertIsInstance(result, ListReply)
         result = await result.aslist()
-        self.assertEqual(result, [ u'3', u'2' ])
+        self.assertEqual(result, [ '3', '2' ])
 
         # Hsetnx
-        result = await protocol.hsetnx(u'my_hash', u'b', '4')
+        result = await protocol.hsetnx('my_hash', 'b', '4')
         self.assertEqual(result, 0) # Existing key. Not set
-        result = await protocol.hget(u'my_hash', u'b')
-        self.assertEqual(result, u'2')
+        result = await protocol.hget('my_hash', 'b')
+        self.assertEqual(result, '2')
 
-        result = await protocol.hsetnx(u'my_hash', u'd', '5')
+        result = await protocol.hsetnx('my_hash', 'd', '5')
         self.assertEqual(result, 1) # New key, set
-        result = await protocol.hget(u'my_hash', u'd')
-        self.assertEqual(result, u'5')
+        result = await protocol.hget('my_hash', 'd')
+        self.assertEqual(result, '5')
 
     @redis_test
     async def test_hincr(self, transport, protocol):
-        await protocol.delete([ u'my_hash' ])
-        await protocol.hset(u'my_hash', u'a', u'10')
+        await protocol.delete([ 'my_hash' ])
+        await protocol.hset('my_hash', 'a', '10')
 
         # hincrby
-        result = await protocol.hincrby(u'my_hash', u'a', 2)
+        result = await protocol.hincrby('my_hash', 'a', 2)
         self.assertEqual(result, 12)
 
         # hincrbyfloat
-        result = await protocol.hincrbyfloat(u'my_hash', u'a', 3.7)
+        result = await protocol.hincrbyfloat('my_hash', 'a', 3.7)
         self.assertEqual(result, 15.7)
 
     @redis_test
@@ -812,43 +812,43 @@ class RedisProtocolTest(TestCase):
             subscription = await protocol2.start_subscribe()
             self.assertIsInstance(subscription, Subscription)
             self.assertEqual(protocol2.in_pubsub, True)
-            await subscription.subscribe([u'our_channel'])
+            await subscription.subscribe(['our_channel'])
 
             value = await subscription.next_published()
             self.assertIsInstance(value, PubSubReply)
-            self.assertEqual(value.channel, u'our_channel')
-            self.assertEqual(value.value, u'message1')
+            self.assertEqual(value.channel, 'our_channel')
+            self.assertEqual(value.value, 'message1')
 
             value = await subscription.next_published()
             self.assertIsInstance(value, PubSubReply)
-            self.assertEqual(value.channel, u'our_channel')
-            self.assertEqual(value.value, u'message2')
-            self.assertEqual(repr(value), u"PubSubReply(channel='our_channel', value='message2')")
+            self.assertEqual(value.channel, 'our_channel')
+            self.assertEqual(value.value, 'message2')
+            self.assertEqual(repr(value), "PubSubReply(channel='our_channel', value='message2')")
 
             return transport2
 
         f = asyncio.ensure_future(listener())
 
         async def sender():
-            value = await protocol.publish(u'our_channel', 'message1')
+            value = await protocol.publish('our_channel', 'message1')
             self.assertGreaterEqual(value, 1) # Nr of clients that received the message
-            value = await protocol.publish(u'our_channel', 'message2')
+            value = await protocol.publish('our_channel', 'message2')
             self.assertGreaterEqual(value, 1)
 
             # Test pubsub_channels
             result = await protocol.pubsub_channels()
             self.assertIsInstance(result, ListReply)
             result = await result.aslist()
-            self.assertIn(u'our_channel', result)
+            self.assertIn('our_channel', result)
 
-            result = await protocol.pubsub_channels_aslist(u'our_c*')
-            self.assertIn(u'our_channel', result)
+            result = await protocol.pubsub_channels_aslist('our_c*')
+            self.assertIn('our_channel', result)
 
-            result = await protocol.pubsub_channels_aslist(u'unknown-channel-prefix*')
+            result = await protocol.pubsub_channels_aslist('unknown-channel-prefix*')
             self.assertEqual(result, [])
 
             # Test pubsub numsub.
-            result = await protocol.pubsub_numsub([ u'our_channel', u'some_unknown_channel' ])
+            result = await protocol.pubsub_numsub([ 'our_channel', 'some_unknown_channel' ])
             self.assertIsInstance(result, DictReply)
             result = await result.asdict()
             self.assertEqual(len(result), 2)
@@ -951,24 +951,24 @@ class RedisProtocolTest(TestCase):
 
     @redis_test
     async def test_incr(self, transport, protocol):
-        await protocol.set(u'key1', u'3')
+        await protocol.set('key1', '3')
 
         # Incr
-        result = await protocol.incr(u'key1')
+        result = await protocol.incr('key1')
         self.assertEqual(result, 4)
-        result = await protocol.incr(u'key1')
+        result = await protocol.incr('key1')
         self.assertEqual(result, 5)
 
         # Incrby
-        result = await protocol.incrby(u'key1', 10)
+        result = await protocol.incrby('key1', 10)
         self.assertEqual(result, 15)
 
         # Decr
-        result = await protocol.decr(u'key1')
+        result = await protocol.decr('key1')
         self.assertEqual(result, 14)
 
         # Decrby
-        result = await protocol.decrby(u'key1', 4)
+        result = await protocol.decrby('key1', 4)
         self.assertEqual(result, 10)
 
     @redis_test
@@ -1083,7 +1083,7 @@ class RedisProtocolTest(TestCase):
         # Test zrange
         result = await protocol.zrange('myzset')
         self.assertIsInstance(result, ZRangeReply)
-        self.assertEqual(repr(result), u"ZRangeReply(length=3)")
+        self.assertEqual(repr(result), "ZRangeReply(length=3)")
         self.assertEqual((await result.asdict()),
                 { 'key': 4.0, 'key2': 5.0, 'key3': 5.5 })
 
@@ -1177,7 +1177,7 @@ class RedisProtocolTest(TestCase):
         # Test zrevrange
         result = await protocol.zrevrange('myzset')
         self.assertIsInstance(result, ZRangeReply)
-        self.assertEqual(repr(result), u"ZRangeReply(length=3)")
+        self.assertEqual(repr(result), "ZRangeReply(length=3)")
         self.assertEqual((await result.asdict()),
                 { 'key': 4.0, 'key2': 5.0, 'key3': 5.5 })
 
@@ -1310,7 +1310,7 @@ class RedisProtocolTest(TestCase):
 
     @redis_test
     async def test_randomkey(self, transport, protocol):
-        await protocol.set(u'key1', u'value')
+        await protocol.set('key1', 'value')
         result = await protocol.randomkey()
         self.assertIsInstance(result, str)
 
@@ -1322,12 +1322,12 @@ class RedisProtocolTest(TestCase):
     @redis_test
     async def test_client_names(self, transport, protocol):
         # client_setname
-        result = await protocol.client_setname(u'my-connection-name')
+        result = await protocol.client_setname('my-connection-name')
         self.assertEqual(result, StatusReply('OK'))
 
         # client_getname
         result = await protocol.client_getname()
-        self.assertEqual(result, u'my-connection-name')
+        self.assertEqual(result, 'my-connection-name')
 
         # client list
         result = await protocol.client_list()
@@ -1378,7 +1378,7 @@ class RedisProtocolTest(TestCase):
         self.assertIsInstance(result, EvalScriptReply)
         result = await result.return_value()
         self.assertIsInstance(result, str)
-        self.assertEqual(result, u'text')
+        self.assertEqual(result, 'text')
 
     @redis_test
     async def test_script_return_types(self, transport, protocol):
@@ -1437,11 +1437,11 @@ class RedisProtocolTest(TestCase):
     @redis_test
     async def test_transaction(self, transport, protocol):
         # Prepare
-        await protocol.set(u'my_key', u'a')
-        await protocol.set(u'my_key2', u'b')
-        await protocol.set(u'my_key3', u'c')
-        await protocol.delete([ u'my_hash' ])
-        await protocol.hmset(u'my_hash', {'a':'1', 'b':'2', 'c':'3'})
+        await protocol.set('my_key', 'a')
+        await protocol.set('my_key2', 'b')
+        await protocol.set('my_key3', 'c')
+        await protocol.delete([ 'my_hash' ])
+        await protocol.hmset('my_hash', {'a':'1', 'b':'2', 'c':'3'})
 
         # Start transaction
         self.assertEqual(protocol.in_transaction, False)
@@ -1480,10 +1480,10 @@ class RedisProtocolTest(TestCase):
         r4 = await r4.aslist()
         r5 = await r5.asdict()
 
-        self.assertEqual(r1, u'a')
-        self.assertEqual(r2, [u'a', u'b'])
-        self.assertEqual(r3, u'c')
-        self.assertEqual(r4, [u'b', u'c'])
+        self.assertEqual(r1, 'a')
+        self.assertEqual(r2, ['a', 'b'])
+        self.assertEqual(r3, 'c')
+        self.assertEqual(r4, ['b', 'c'])
         self.assertEqual(r5, { 'a': '1', 'b': '2', 'c': '3' })
 
     @redis_test
@@ -1503,21 +1503,21 @@ class RedisProtocolTest(TestCase):
 
     @redis_test
     async def test_discard_transaction(self, transport, protocol):
-        await protocol.set(u'my_key', u'a')
+        await protocol.set('my_key', 'a')
 
         transaction = await protocol.multi()
-        await transaction.set(u'my_key', 'b')
+        await transaction.set('my_key', 'b')
 
         # Discard
         result = await transaction.discard()
         self.assertEqual(result, None)
 
-        result = await protocol.get(u'my_key')
-        self.assertEqual(result, u'a')
+        result = await protocol.get('my_key')
+        self.assertEqual(result, 'a')
 
         # Calling anything on the transaction after discard should fail.
         with self.assertRaises(Error) as e:
-            result = await transaction.get(u'my_key')
+            result = await transaction.get('my_key')
         self.assertEqual(e.exception.args[0], 'Transaction already finished or invalid.')
 
     @redis_test
@@ -1711,19 +1711,19 @@ class RedisProtocolTest(TestCase):
         Test _asdict/_asset/_aslist suffixes.
         """
         # Prepare
-        await protocol.set(u'my_key', u'a')
-        await protocol.set(u'my_key2', u'b')
+        await protocol.set('my_key', 'a')
+        await protocol.set('my_key2', 'b')
 
-        await protocol.delete([ u'my_set' ])
-        await protocol.sadd(u'my_set', [u'value1'])
-        await protocol.sadd(u'my_set', [u'value2'])
+        await protocol.delete([ 'my_set' ])
+        await protocol.sadd('my_set', ['value1'])
+        await protocol.sadd('my_set', ['value2'])
 
-        await protocol.delete([ u'my_hash' ])
-        await protocol.hmset(u'my_hash', {'a':'1', 'b':'2', 'c':'3'})
+        await protocol.delete([ 'my_hash' ])
+        await protocol.hmset('my_hash', {'a':'1', 'b':'2', 'c':'3'})
 
         # Test mget_aslist
         result = await protocol.mget_aslist(['my_key', 'my_key2'])
-        self.assertEqual(result, [u'a', u'b'])
+        self.assertEqual(result, ['a', 'b'])
         self.assertIsInstance(result, list)
 
         # Test keys_aslist
@@ -1731,8 +1731,8 @@ class RedisProtocolTest(TestCase):
         self.assertIsInstance(result, list)
 
         # Test smembers
-        result = await protocol.smembers_asset(u'my_set')
-        self.assertEqual(result, { u'value1', u'value2' })
+        result = await protocol.smembers_asset('my_set')
+        self.assertEqual(result, { 'value1', 'value2' })
         self.assertIsInstance(result, set)
 
         # Test hgetall_asdict
@@ -1743,7 +1743,7 @@ class RedisProtocolTest(TestCase):
         # test all inside a transaction.
         transaction = await protocol.multi()
         f1 = await transaction.mget_aslist(['my_key', 'my_key2'])
-        f2 = await transaction.smembers_asset(u'my_set')
+        f2 = await transaction.smembers_asset('my_set')
         f3 = await transaction.hgetall_asdict('my_hash')
         await transaction.exec()
 
@@ -1751,10 +1751,10 @@ class RedisProtocolTest(TestCase):
         result2 = await f2
         result3 = await f3
 
-        self.assertEqual(result1, [u'a', u'b'])
+        self.assertEqual(result1, ['a', 'b'])
         self.assertIsInstance(result1, list)
 
-        self.assertEqual(result2, { u'value1', u'value2' })
+        self.assertEqual(result2, { 'value1', 'value2' })
         self.assertIsInstance(result2, set)
 
         self.assertEqual(result3, {'a':'1', 'b':'2', 'c':'3'})
@@ -1783,21 +1783,21 @@ class RedisProtocolTest(TestCase):
         Test a transaction using watch.
         (Retrieve the watched value then use it inside the transaction.)
         """
-        await protocol.set(u'key', u'val')
+        await protocol.set('key', 'val')
 
         # Test
-        await protocol.watch([u'key'])
-        value = await protocol.get(u'key')
+        await protocol.watch(['key'])
+        value = await protocol.get('key')
 
         t = await protocol.multi()
 
-        await t.set(u'key', value + u'ue')
+        await t.set('key', value + 'ue')
 
         await t.exec()
 
         # Check
-        result = await protocol.get(u'key')
-        self.assertEqual(result, u'value')
+        result = await protocol.get('key')
+        self.assertEqual(result, 'value')
 
     @redis_test
     async def test_multi_watch_1(self, transport, protocol):
@@ -1805,25 +1805,25 @@ class RedisProtocolTest(TestCase):
         Test a transaction, using watch
         (Test using the watched key inside the transaction.)
         """
-        await protocol.set(u'key', u'0')
-        await protocol.set(u'other_key', u'0')
+        await protocol.set('key', '0')
+        await protocol.set('other_key', '0')
 
         # Test
         self.assertEqual(protocol.in_transaction, False)
         t = await protocol.multi(watch=['other_key'])
         self.assertEqual(protocol.in_transaction, True)
 
-        await t.set(u'key', u'value')
-        await t.set(u'other_key', u'my_value')
+        await t.set('key', 'value')
+        await t.set('other_key', 'my_value')
         await t.exec()
 
         # Check
         self.assertEqual(protocol.in_transaction, False)
 
-        result = await protocol.get(u'key')
-        self.assertEqual(result, u'value')
-        result = await protocol.get(u'other_key')
-        self.assertEqual(result, u'my_value')
+        result = await protocol.get('key')
+        self.assertEqual(result, 'value')
+        result = await protocol.get('other_key')
+        self.assertEqual(result, 'my_value')
 
     @redis_test
     async def test_multi_watch_2(self, transport, protocol):
@@ -1834,21 +1834,21 @@ class RedisProtocolTest(TestCase):
         # Setup
         transport2, protocol2 = await connect()
 
-        await protocol.set(u'key', u'0')
-        await protocol.set(u'other_key', u'0')
+        await protocol.set('key', '0')
+        await protocol.set('other_key', '0')
 
         # Test
         t = await protocol.multi(watch=['other_key'])
         await protocol2.set('other_key', 'other_value')
-        await t.set(u'other_key', u'value')
+        await t.set('other_key', 'value')
 
         with self.assertRaises(TransactionError):
             await t.exec()
 
         # Check
         self.assertEqual(protocol.in_transaction, False)
-        result = await protocol.get(u'other_key')
-        self.assertEqual(result, u'other_value')
+        result = await protocol.get('other_key')
+        self.assertEqual(result, 'other_value')
 
         transport2.close()
 
@@ -2011,7 +2011,7 @@ class RedisPoolTest(TestCase):
                 self.assertIsInstance(reply, BlockingPopReply)
                 self.assertIsInstance(reply.value, str)
                 results.append(reply.value)
-                self.assertIn(u"BlockingPopReply(list_name='my-list', value='", repr(reply))
+                self.assertIn("BlockingPopReply(list_name='my-list', value='", repr(reply))
 
         # Source: Push items on the queue
         async def source():
@@ -2116,19 +2116,19 @@ class RedisPoolTest(TestCase):
         self.assertIn('No available connections in the pool', e.exception.args[0])
 
         # Run commands in transaction
-        await t1.set(u'key', u'value')
-        await t2.set(u'key2', u'value2')
+        await t1.set('key', 'value')
+        await t2.set('key2', 'value2')
 
         # Commit.
         await t1.exec()
         await t2.exec()
 
         # Check
-        result1 = await connection.get(u'key')
-        result2 = await connection.get(u'key2')
+        result1 = await connection.get('key')
+        result2 = await connection.get('key2')
 
-        self.assertEqual(result1, u'value')
-        self.assertEqual(result2, u'value2')
+        self.assertEqual(result1, 'value')
+        self.assertEqual(result2, 'value2')
 
         connection.close()
 

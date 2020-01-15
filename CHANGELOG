@@ -1,6 +1,15 @@
 CHANGELOG
 =========
 
+0.16.0: unreleased
+------------------
+- Added support for Python 3.8
+- Dropped support for Python <3.6
+- Added than support for zpopmin and zrangebylex methods
+- Fix DeprecationWarning for inspect.formatargspec()
+- Fix missing object asyncio.streams.IncompleteReadError
+
+
 0.15.1: 2018-07-30
 ------------------
 

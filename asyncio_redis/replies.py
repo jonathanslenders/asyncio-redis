@@ -1,5 +1,4 @@
 import asyncio
-from asyncio.tasks import gather
 
 __all__ = (
     'BlockingPopReply',
@@ -56,12 +55,12 @@ class DictReply:
         return key, value
 
     def __iter__(self):
-        """ Yield a list of futures that yield { key: value } tuples. """
-        i = iter(self._result)
-
+        """Yield a list of futures that yield { key: value } tuples
+        """
         @asyncio.coroutine
         def getter(f):
-            """ Coroutine which processes one item. """
+            """Coroutine which processes one item
+            """
             key, value = yield from f
             key, value = self._parse(key, value)
             return key, value

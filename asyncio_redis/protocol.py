@@ -940,7 +940,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                 yield from self._handle_item(self._push_answer)
             except ConnectionLostError:
                 return
-            except asyncio.streams.IncompleteReadError:
+            except asyncio.IncompleteReadError:
                 return
 
     @asyncio.coroutine

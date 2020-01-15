@@ -46,7 +46,7 @@ if __name__ == '__main__':
         # Stream the items, this will probably wait for the next IP packets to come in.
         count = 0
         for f in set_reply:
-            m = yield from f
+            yield from f
             count += 1
             if count % 1000 == 0:
                 print('Received %i items' % count)

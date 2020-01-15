@@ -42,7 +42,7 @@ import asyncio
 import unittest
 import os
 import gc
-import warnings
+
 
 try:
     import hiredis
@@ -108,7 +108,7 @@ def redis_test(function):
 class TestCase(unittest.TestCase):
     def tearDown(self):
         # Collect garbage on tearDown. (This can print ResourceWarnings.)
-        result = gc.collect()
+        gc.collect()
 
 
 class RedisProtocolTest(TestCase):
@@ -619,17 +619,17 @@ class RedisProtocolTest(TestCase):
 
         # brpoplpush
         with self.assertRaises(TimeoutError) as e:
-            result = yield from protocol.brpoplpush(u'from', u'to', 1)
+            yield from protocol.brpoplpush(u'from', u'to', 1)
         self.assertIn('Timeout in brpoplpush', e.exception.args[0])
 
         # brpop
         with self.assertRaises(TimeoutError) as e:
-            result = yield from protocol.brpop([u'from'], 1)
+            yield from protocol.brpop([u'from'], 1)
         self.assertIn('Timeout in blocking pop', e.exception.args[0])
 
         # blpop
         with self.assertRaises(TimeoutError) as e:
-            result = yield from protocol.blpop([u'from'], 1)
+            yield from protocol.blpop([u'from'], 1)
         self.assertIn('Timeout in blocking pop', e.exception.args[0])
 
     @redis_test
@@ -1915,7 +1915,7 @@ class RedisBytesProtocolTest(TestCase):
 
         @asyncio.coroutine
         def sender():
-            value = yield from protocol.publish(b'our_channel', b'message1')
+            yield from protocol.publish(b'our_channel', b'message1')
 
         f = ensure_future(listener(), loop=self.loop)
         yield from asyncio.sleep(.5, loop=self.loop)
@@ -2349,14 +2349,14 @@ def _start_redis_server(loop):
     return redis_srv
 
 
-@unittest.skipIf(hiredis == None, 'Hiredis not found.')
+@unittest.skipIf(hiredis is None, 'Hiredis not found.')
 class HiRedisProtocolTest(RedisProtocolTest):
     def setUp(self):
         super().setUp()
         self.protocol_class = HiRedisProtocol
 
 
-@unittest.skipIf(hiredis == None, 'Hiredis not found.')
+@unittest.skipIf(hiredis is None, 'Hiredis not found.')
 class HiRedisBytesProtocolTest(RedisBytesProtocolTest):
     def setUp(self):
         self.loop = asyncio.get_event_loop()

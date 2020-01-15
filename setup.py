@@ -1,27 +1,27 @@
 #!/usr/bin/env python
-try:
-    from setuptools import setup
-except ImportError:
-    from distutils.core import setup
-import sys
+from setuptools import setup
 
-if sys.version_info >= (3, 4):
-    install_requires = []
-else:
-    install_requires = ['asyncio']
 
 setup(
-        name='asyncio_redis',
-        author='Jonathan Slenders',
-        version='0.15.1',
-        license='LICENSE.txt',
-        url='https://github.com/jonathanslenders/asyncio-redis',
-
-        description='PEP 3156 implementation of the redis protocol.',
-        long_description=open("README.rst").read(),
-        packages=['asyncio_redis'],
-        install_requires=install_requires,
-        extras_require={
-            'hiredis': ['hiredis'],
-        },
+    name='asyncio_redis',
+    author='Jonathan Slenders',
+    version='0.15.1',
+    license='LICENSE.txt',
+    classifiers=[
+        'Development Status :: 4 - Beta',
+        'Framework :: AsyncIO',
+        'Intended Audience :: Developers',
+        'Topic :: Database',
+        'Programming Language :: Python',
+        'Programming Language :: Python :: 3 :: Only',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+    ],
+    url='https://github.com/jonathanslenders/asyncio-redis',
+    description='PEP 3156 implementation of the redis protocol.',
+    long_description=open("README.rst").read(),
+    packages=['asyncio_redis'],
+    python_requires='>=3.6',
+    extras_require={'hiredis': ['hiredis']},
 )

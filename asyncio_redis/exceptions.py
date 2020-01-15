@@ -1,16 +1,3 @@
-__all__ = (
-        'ConnectionLostError',
-        'Error',
-        'ErrorReply',
-        'NoAvailableConnectionsInPoolError',
-        'NoRunningScriptError',
-        'NotConnectedError',
-        'ScriptKilledError',
-        'TimeoutError',
-        'TransactionError',
-)
-
-
 # See following link for the proper way to create user defined exceptions:
 # http://docs.python.org/3.8/tutorial/errors.html#user-defined-exceptions
 

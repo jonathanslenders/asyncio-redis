@@ -4,9 +4,6 @@ import asyncio
 import logging
 
 
-__all__ = ('Connection', )
-
-
 class Connection:
     """
     Wrapper around the protocol and transport which takes care of establishing

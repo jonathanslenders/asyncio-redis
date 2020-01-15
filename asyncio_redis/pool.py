@@ -6,9 +6,6 @@ from functools import wraps
 import asyncio
 
 
-__all__ = ('Pool', )
-
-
 class Pool:
     """
     Pool of connections. Each

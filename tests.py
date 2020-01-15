@@ -12,6 +12,7 @@ except ImportError:
 
 from asyncio_redis import (
         Connection,
+        ConnectionLostError,
         Error,
         ErrorReply,
         HiRedisProtocol,
@@ -23,6 +24,7 @@ from asyncio_redis import (
         Script,
         ScriptKilledError,
         Subscription,
+        TimeoutError,
         Transaction,
         TransactionError,
         ZScoreBoundary,
@@ -40,7 +42,6 @@ from asyncio_redis.replies import (
         StatusReply,
         ZRangeReply,
 )
-from asyncio_redis.exceptions import TimeoutError, ConnectionLostError
 from asyncio_redis.cursors import Cursor
 from asyncio_redis.encoders import BytesEncoder
 

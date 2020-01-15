@@ -1,8 +1,15 @@
 #!/usr/bin/env python
 
-from asyncio.futures import Future
-from asyncio.tasks import gather
+import asyncio
 from asyncio.test_utils import run_briefly
+import gc
+import os
+import unittest
+
+try:
+    import hiredis
+except ImportError:
+    hiredis = None
 
 from asyncio_redis import (
         Connection,
@@ -38,27 +45,9 @@ from asyncio_redis.exceptions import TimeoutError, ConnectionLostError
 from asyncio_redis.cursors import Cursor
 from asyncio_redis.encoders import BytesEncoder
 
-import asyncio
-import unittest
-import os
-import gc
-
-
-try:
-    import hiredis
-except ImportError:
-    hiredis = None
-
 PORT = int(os.environ.get('REDIS_PORT', 6379))
 HOST = os.environ.get('REDIS_HOST', 'localhost')
 START_REDIS_SERVER = bool(os.environ.get('START_REDIS_SERVER', False))
-
-
-# In Python 3.4.4, `async` was renamed to `ensure_future`.
-try:
-    ensure_future = asyncio.ensure_future
-except AttributeError:
-    ensure_future = getattr(asyncio, "async")
 
 
 @asyncio.coroutine
@@ -571,7 +560,7 @@ class RedisProtocolTest(TestCase):
             self.assertEqual(value.list_name, u'my_list')
             self.assertEqual(value.value, u'value')
             test_order.append('#3')
-        f = ensure_future(blpop(), loop=self.loop)
+        f = asyncio.ensure_future(blpop(), loop=self.loop)
 
         transport2, protocol2 = yield from connect(self.loop)
 
@@ -587,7 +576,7 @@ class RedisProtocolTest(TestCase):
             self.assertIsInstance(value, BlockingPopReply)
             self.assertEqual(value.list_name, u'my_list')
             self.assertEqual(value.value, u'value2')
-        f = ensure_future(blpop(), loop=self.loop)
+        f = asyncio.ensure_future(blpop(), loop=self.loop)
 
         yield from protocol2.rpush(u'my_list', [u'value2'])
         yield from f
@@ -604,7 +593,7 @@ class RedisProtocolTest(TestCase):
         def brpoplpush():
             result = yield from protocol.brpoplpush(u'from', u'to')
             self.assertEqual(result, u'my_value')
-        f = ensure_future(brpoplpush(), loop=self.loop)
+        f = asyncio.ensure_future(brpoplpush(), loop=self.loop)
 
         transport2, protocol2 = yield from connect(self.loop)
         yield from protocol2.rpush(u'from', [u'my_value'])
@@ -845,7 +834,7 @@ class RedisProtocolTest(TestCase):
 
             return transport2
 
-        f = ensure_future(listener(), loop=self.loop)
+        f = asyncio.ensure_future(listener(), loop=self.loop)
 
         @asyncio.coroutine
         def sender():
@@ -913,7 +902,7 @@ class RedisProtocolTest(TestCase):
 
             transport2.close()
 
-        f = ensure_future(listener(), loop=self.loop)
+        f = asyncio.ensure_future(listener(), loop=self.loop)
 
         @asyncio.coroutine
         def sender():
@@ -955,7 +944,7 @@ class RedisProtocolTest(TestCase):
 
             transport2.close()
 
-        f = ensure_future(listener(), loop=self.loop)
+        f = asyncio.ensure_future(listener(), loop=self.loop)
 
         @asyncio.coroutine
         def sender():
@@ -1448,7 +1437,7 @@ class RedisProtocolTest(TestCase):
             transport.close()
 
         # (start script)
-        f = ensure_future(run_while_true(), loop=self.loop)
+        f = asyncio.ensure_future(run_while_true(), loop=self.loop)
         yield from asyncio.sleep(.5, loop=self.loop)
 
         result = yield from protocol.script_kill()
@@ -1480,7 +1469,7 @@ class RedisProtocolTest(TestCase):
         f5 = yield from transaction.hgetall('my_hash')
 
         for f in [ f1, f2, f3, f4, f5]:
-            self.assertIsInstance(f, Future)
+            self.assertIsInstance(f, asyncio.Future)
 
         # Calling subscribe inside transaction should fail.
         with self.assertRaises(Error) as e:
@@ -1516,7 +1505,7 @@ class RedisProtocolTest(TestCase):
 
         # Run command, but not as part of the transaction.
         # This should wait until the transaction finishes.
-        f = ensure_future(protocol.set('a', 'b'), loop=self.loop)
+        f = asyncio.ensure_future(protocol.set('a', 'b'), loop=self.loop)
 
         # Close transaction.
         yield from transaction.exec()
@@ -1790,7 +1779,7 @@ class RedisProtocolTest(TestCase):
         @asyncio.coroutine
         def run():
             yield from protocol.brpop(['key'], 3)
-        f = ensure_future(run(), loop=self.loop)
+        f = asyncio.ensure_future(run(), loop=self.loop)
 
         # We cancel the coroutine before the answer arrives.
         yield from asyncio.sleep(.5, loop=self.loop)
@@ -1917,7 +1906,7 @@ class RedisBytesProtocolTest(TestCase):
         def sender():
             yield from protocol.publish(b'our_channel', b'message1')
 
-        f = ensure_future(listener(), loop=self.loop)
+        f = asyncio.ensure_future(listener(), loop=self.loop)
         yield from asyncio.sleep(.5, loop=self.loop)
         yield from sender()
         transport2 = yield from f
@@ -2009,7 +1998,7 @@ class RedisPoolTest(TestCase):
 
             # Wait for ever. (This blocking pop doesn't return.)
             yield from connection.delete([ 'unknown-key' ])
-            f = ensure_future(connection.blpop(['unknown-key']), loop=self.loop)
+            f = asyncio.ensure_future(connection.blpop(['unknown-key']), loop=self.loop)
             yield from asyncio.sleep(.1, loop=self.loop) # Sleep to make sure that the above coroutine started executing.
 
             # Run command in other thread.
@@ -2057,9 +2046,9 @@ class RedisPoolTest(TestCase):
                     yield from asyncio.sleep(.5, loop=self.loop)
 
             # Run both coroutines.
-            f1 = ensure_future(source(), loop=self.loop)
-            f2 = ensure_future(sink(), loop=self.loop)
-            yield from gather(f1, f2)
+            f1 = asyncio.ensure_future(source(), loop=self.loop)
+            f2 = asyncio.ensure_future(sink(), loop=self.loop)
+            yield from asyncio.gather(f1, f2)
 
             # Test results.
             self.assertEqual(results, [ str(i) for i in range(0, 5) ])
@@ -2112,7 +2101,7 @@ class RedisPoolTest(TestCase):
             futures = []
             for i in range(0, 10):
                 self.assertEqual(connection.connections_in_use, i)
-                futures.append(ensure_future(sink(i), loop=self.loop))
+                futures.append(asyncio.ensure_future(sink(i), loop=self.loop))
                 yield from asyncio.sleep(.1, loop=self.loop) # Sleep to make sure that the above coroutine started executing.
 
             # One more blocking call should fail.

@@ -606,7 +606,8 @@ class CommandCreator:
                     typecheck_return(protocol_self, result)
                     future2.set_result(result)
 
-                future.add_done_callback(lambda f: protocol_self._loop.create_task(done(f.result())))
+                loop = asyncio.get_event_loop()
+                future.add_done_callback(lambda f: loop.create_task(done(f.result())))
 
                 return future2
 
@@ -724,7 +725,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                                 enabled.
     :type enable_typechecking: bool
     """
-    def __init__(self, *, password=None, db=0, encoder=None, connection_lost_callback=None, enable_typechecking=True, loop=None):
+    def __init__(self, *, password=None, db=0, encoder=None, connection_lost_callback=None, enable_typechecking=True):
         if encoder is None:
             encoder = UTF8Encoder()
 
@@ -736,7 +737,6 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         self.password = password
         self.db = db
         self._connection_lost_callback = connection_lost_callback
-        self._loop = loop or asyncio.get_event_loop()
 
         # Take encode / decode settings from encoder
         self.encode_from_native = encoder.encode_from_native
@@ -779,7 +779,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         # Start parsing reader stream.
         self._reader = asyncio.StreamReader()
         self._reader.set_transport(transport)
-        self._reader_f = self._loop.create_task(self._reader_coroutine())
+        self._reader_f = asyncio.get_event_loop().create_task(self._reader_coroutine())
 
         async def initialize():
             # If a password or database was been given, first connect to that one.
@@ -797,7 +797,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                 if self._pubsub_patterns:
                     await self._psubscribe(self._subscription, list(self._pubsub_patterns))
 
-        self._loop.create_task(initialize())
+        loop = asyncio.get_event_loop()
+        loop.create_task(initialize())
 
     def data_received(self, data):
         """ Process data received from Redis server.  """
@@ -945,7 +946,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
         # Return the empty queue immediately as an answer.
         if self._in_pubsub:
-            self._loop.create_task(self._handle_pubsub_multibulk_reply(reply))
+            loop = asyncio.get_event_loop()
+            loop.create_task(self._handle_pubsub_multibulk_reply(reply))
         else:
             cb(reply)
 
@@ -2432,14 +2434,12 @@ class HiRedisProtocol(RedisProtocol, metaclass=_RedisProtocolMeta):
     response has been parsed.
     """
     def __init__(self, *, password=None, db=0, encoder=None,
-                 connection_lost_callback=None, enable_typechecking=True,
-                 loop=None):
+                 connection_lost_callback=None, enable_typechecking=True):
         super().__init__(password=password,
                          db=db,
                          encoder=encoder,
                          connection_lost_callback=connection_lost_callback,
-                         enable_typechecking=enable_typechecking,
-                         loop=loop)
+                         enable_typechecking=enable_typechecking)
         self._hiredis = None
         assert hiredis, "`hiredis` libary not available. Please don't use HiRedisProtocol."
 

@@ -4,6 +4,7 @@ from .protocol import RedisProtocol, Script
 
 from functools import wraps
 import asyncio
+import warnings
 
 
 class Pool:
@@ -42,8 +43,6 @@ class Pool:
             The number of parallel connections.
         :param bool auto_reconnect:
             Enable auto reconnect
-        :param loop:
-            (optional) asyncio event loop
         :param protocol_class:
             (optional) redis protocol implementation
         :type protocol_class:
@@ -54,6 +53,9 @@ class Pool:
         self._port = port
         self._poolsize = poolsize
 
+        if loop:
+            warnings.warn("Deprecated parameter: loop", DeprecationWarning)
+
         # Create connections
         conn_coros = [
             Connection.create(
@@ -63,7 +65,6 @@ class Pool:
                 db=db,
                 encoder=encoder,
                 auto_reconnect=auto_reconnect,
-                loop=loop,
                 protocol_class=protocol_class,
             )
             for _ in range(poolsize)

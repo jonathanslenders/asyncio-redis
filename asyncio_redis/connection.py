@@ -2,6 +2,7 @@ from .log import logger
 from .protocol import RedisProtocol, _all_commands
 import asyncio
 import logging
+import warnings
 
 
 class Connection:
@@ -32,19 +33,19 @@ class Connection:
             :class:`~asyncio_redis.encoders.BaseEncoder`
         :param bool auto_reconnect:
             Enable auto reconnect
-        :param loop:
-            (optional) asyncio event loop.
         :param protocol_class:
             (optional) redis protocol implementation
         :type protocol_class:
             :class:`~asyncio_redis.RedisProtocol`
         """
         assert port >= 0, "Unexpected port value: %r" % (port, )
+        if loop:
+            warnings.warn("Deprecated parameter: loop", DeprecationWarning)
+
         connection = cls()
 
         connection.host = host
         connection.port = port
-        connection._loop = loop or asyncio.get_event_loop()
         connection._retry_interval = .5
         connection._closed = False
         connection._closing = False
@@ -54,11 +55,12 @@ class Connection:
         # Create protocol instance
         def connection_lost():
             if connection._auto_reconnect and not connection._closing:
-                connection._loop.create_task(connection._reconnect())
+                loop = asyncio.get_event_loop()
+                loop.create_task(connection._reconnect())
 
         # Create protocol instance
         connection.protocol = protocol_class(password=password, db=db, encoder=encoder,
-                        connection_lost_callback=connection_lost, loop=connection._loop)
+                        connection_lost_callback=connection_lost)
 
         # Connect
         if connection._auto_reconnect:
@@ -89,11 +91,12 @@ class Connection:
         """
         Set up Redis connection.
         """
+        loop = asyncio.get_event_loop()
         logger.log(logging.INFO, 'Connecting to redis')
         if self.port:
-            await self._loop.create_connection(lambda: self.protocol, self.host, self.port)
+            await loop.create_connection(lambda: self.protocol, self.host, self.port)
         else:
-            await self._loop.create_unix_connection(lambda: self.protocol, self.host)
+            await loop.create_unix_connection(lambda: self.protocol, self.host)
 
     async def _reconnect(self):
         """

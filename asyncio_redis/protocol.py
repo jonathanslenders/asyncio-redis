@@ -621,7 +621,7 @@ class CommandCreator:
                     if post_process:
                         result = await post_process(protocol_self, result)
                     typecheck_return(protocol_self, result)
-                    return (result)
+                    return result
 
             else:
                 typecheck_input(protocol_self, *a, **kw)
@@ -655,6 +655,7 @@ class QueryCommandCreator(CommandCreator):
             result.append( (suffix, self._get_wrapped_method(post_processor, suffix, return_type)) )
 
         return result
+
 
 _SMALL_INTS = list(str(i).encode('ascii') for i in range(1000))
 
@@ -2200,7 +2201,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             await f2
 
         """
-        return self._watch(tr, keys)
+        return await self._watch(tr, keys)
 
     async def _watch(self, tr, keys:ListOf(NativeType)) -> NoneType:
         result = await self._query(tr, b'watch', *map(self.encode_from_native, keys), _bypass=True)

@@ -41,11 +41,13 @@ Connection
     :members:
     :exclude-members: register_script
 
+
 Connection pool
 ---------------
 
 .. autoclass:: asyncio_redis.Pool
     :members:
+
 
 Command replies
 ---------------
@@ -75,6 +77,12 @@ Command replies
     :members:
 
 .. autoclass:: asyncio_redis.replies.ClientListReply
+    :members:
+
+.. autoclass:: asyncio_redis.replies.ConfigPairReply
+    :members:
+
+.. autoclass:: asyncio_redis.replies.EvalScriptReply
     :members:
 
 
@@ -116,23 +124,23 @@ Utils
 Exceptions
 ----------
 
-.. autoclass:: asyncio_redis.exceptions.TransactionError
+.. autoclass:: asyncio_redis.TransactionError
     :members:
 
-.. autoclass:: asyncio_redis.exceptions.NotConnectedError
+.. autoclass:: asyncio_redis.NotConnectedError
     :members:
 
-.. autoclass:: asyncio_redis.exceptions.TimeoutError
+.. autoclass:: asyncio_redis.TimeoutError
     :members:
 
-.. autoclass:: asyncio_redis.exceptions.ConnectionLostError
+.. autoclass:: asyncio_redis.ConnectionLostError
     :members:
 
-.. autoclass:: asyncio_redis.exceptions.NoAvailableConnectionsInPoolError
+.. autoclass:: asyncio_redis.NoAvailableConnectionsInPoolError
     :members:
 
-.. autoclass:: asyncio_redis.exceptions.ScriptKilledError
+.. autoclass:: asyncio_redis.ScriptKilledError
     :members:
 
-.. autoclass:: asyncio_redis.exceptions.NoRunningScriptError
+.. autoclass:: asyncio_redis.NoRunningScriptError
     :members:

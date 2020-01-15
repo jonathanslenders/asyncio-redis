@@ -524,7 +524,7 @@ class CommandCreator:
                     SetReply: ":class:`SetReply <asyncio_redis.replies.SetReply>`",
                     StatusReply: ":class:`StatusReply <asyncio_redis.replies.StatusReply>`",
                     ZRangeReply: ":class:`ZRangeReply <asyncio_redis.replies.ZRangeReply>`",
-                    ZScoreBoundary: ":class:`ZScoreBoundary <asyncio_redis.replies.ZScoreBoundary>`",
+                    ZScoreBoundary: ":class:`ZScoreBoundary <asyncio_redis.ZScoreBoundary>`",
                     EvalScriptReply: ":class:`EvalScriptReply <asyncio_redis.replies.EvalScriptReply>`",
                     Cursor: ":class:`Cursor <asyncio_redis.cursors.Cursor>`",
                     SetCursor: ":class:`SetCursor <asyncio_redis.cursors.SetCursor>`",
@@ -710,7 +710,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     ::
 
-        self.loop = asyncio.get_event_loop()
+        loop = asyncio.get_event_loop()
         transport, protocol = await loop.create_connection(RedisProtocol, 'localhost', 6379)
 
     :param password: Redis database password
@@ -1458,14 +1458,14 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     @_query_command
     def blpop(self, tr, keys:ListOf(NativeType), timeout:int=0) -> BlockingPopReply:
         """ Remove and get the first element in a list, or block until one is available.
-        This will raise :class:`~asyncio_redis.exceptions.TimeoutError` when
+        This will raise :class:`~asyncio_redis.TimeoutError` when
         the timeout was exceeded and Redis returns `None`. """
         return self._blocking_pop(tr, b'blpop', keys, timeout=timeout)
 
     @_query_command
     def brpop(self, tr, keys:ListOf(NativeType), timeout:int=0) -> BlockingPopReply:
         """ Remove and get the last element in a list, or block until one is available.
-        This will raise :class:`~asyncio_redis.exceptions.TimeoutError` when
+        This will raise :class:`~asyncio_redis.TimeoutError` when
         the timeout was exceeded and Redis returns `None`. """
         return self._blocking_pop(tr, b'brpop', keys, timeout=timeout)
 
@@ -2036,7 +2036,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     async def script_kill(self, tr) -> StatusReply:
         """
         Kill the script currently in execution.  This raises
-        :class:`~asyncio_redis.exceptions.NoRunningScriptError` when there are no
+        :class:`~asyncio_redis.NoRunningScriptError` when there are no
         scrips running.
         """
         try:
@@ -2057,7 +2057,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
         The return type/value depends on the script.
 
-        This will raise a :class:`~asyncio_redis.exceptions.ScriptKilledError`
+        This will raise a :class:`~asyncio_redis.ScriptKilledError`
         exception if the script was killed.
         """
         if not keys: keys = []
@@ -2330,7 +2330,7 @@ class Script:
             # If the LUA script returns something, retrieve the return value
             result = await script_reply.return_value()
 
-        This will raise a :class:`~asyncio_redis.exceptions.ScriptKilledError`
+        This will raise a :class:`~asyncio_redis.ScriptKilledError`
         exception if the script was killed.
         """
         return self.get_evalsha_func()(self.sha, keys, args)
@@ -2377,7 +2377,7 @@ class Transaction:
         """
         Execute transaction.
 
-        This can raise a :class:`~asyncio_redis.exceptions.TransactionError`
+        This can raise a :class:`~asyncio_redis.TransactionError`
         when the transaction fails.
         """
         return self._protocol._exec(self)

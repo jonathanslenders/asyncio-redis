@@ -2211,7 +2211,7 @@ class NoGlobalLoopTest(TestCase):
             # ** Run code on the new loop. **
 
             # Create connection
-            connection = new_loop.run_until_complete(Connection.create(host=HOST, port=PORT, loop=new_loop))
+            connection = new_loop.run_until_complete(Connection.create(host=HOST, port=PORT))
 
             self.assertIsInstance(connection, Connection)
             try:

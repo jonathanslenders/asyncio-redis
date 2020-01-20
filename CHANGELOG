@@ -6,7 +6,7 @@ CHANGELOG
 - Added support for Python 3.8
 - Dropped support for Python <3.6
 - Deprecated 'loop' parameter in Connection.create and Pool.create
-- Added than support for zpopmin and zrangebylex methods
+- Added support for zpopmin and zrangebylex methods
 - Fix DeprecationWarning for inspect.formatargspec()
 - Fix missing object asyncio.streams.IncompleteReadError
 - Intersphinx: all classes that can be imported from the top-level module must now be

@@ -13,12 +13,6 @@ __all__ = (
 )
 
 
-try:
-    ensure_future = asyncio.ensure_future
-except AttributeError:
-    ensure_future = getattr(asyncio, "async")
-
-
 class StatusReply:
     """
     Wrapper for Redis status replies.
@@ -28,7 +22,7 @@ class StatusReply:
         self.status = status
 
     def __repr__(self):
-        return 'StatusReply(status=%r)' % self.status
+        return f'StatusReply(status={self.status!r})'
 
     def __eq__(self, other):
         return self.status == other.status
@@ -66,7 +60,7 @@ class DictReply:
 
         for _ in range(self._result.count // 2):
             read_future = self._result._read(count=2)
-            yield ensure_future(getter(read_future))
+            yield asyncio.ensure_future(getter(read_future))
 
     async def asdict(self):
         """
@@ -76,7 +70,7 @@ class DictReply:
         return dict(self._parse(k, v) for k, v in zip(data[::2], data[1::2]))
 
     def __repr__(self):
-        return '%s(length=%r)' % (self.__class__.__name__, int(self._result.count / 2))
+        return f'{self.__class__.__name__}(length={self._result.count // 2})'
 
 
 class ZRangeReply(DictReply):
@@ -113,7 +107,7 @@ class SetReply:
         return set(data)
 
     def __repr__(self):
-        return 'SetReply(length=%r)' % (self._result.count)
+        return f'SetReply(length={self._result.count})'
 
 
 class ListReply:
@@ -141,7 +135,7 @@ class ListReply:
         return self._result._read(count=self._result.count)
 
     def __repr__(self):
-        return 'ListReply(length=%r)' % (self._result.count, )
+        return f'ListReply(length={self._result.count})'
 
 
 class BlockingPopReply:
@@ -164,7 +158,7 @@ class BlockingPopReply:
         return self._value
 
     def __repr__(self):
-        return 'BlockingPopReply(list_name=%r, value=%r)' % (self.list_name, self.value)
+        return f'BlockingPopReply(list_name={self.list_name!r}, value={self.value!r})'
 
 
 class ConfigPairReply:
@@ -184,7 +178,7 @@ class ConfigPairReply:
         return self._value
 
     def __repr__(self):
-        return 'ConfigPairReply(parameter=%r, value=%r)' % (self.parameter, self.value)
+        return f'ConfigPairReply(parameter={self.parameter!r}, value={self.value!r})'
 
 
 class InfoReply:
@@ -222,7 +216,7 @@ class PubSubReply:
         return self._pattern
 
     def __repr__(self):
-        return 'PubSubReply(channel=%r, value=%r)' % (self.channel, self.value)
+        return f'PubSubReply(channel={self.channel!r}, value={self.value!r})'
 
     def __eq__(self, other):
         return (self._channel == other._channel and
@@ -257,11 +251,7 @@ class EvalScriptReply:
 
             elif isinstance(obj, MultiBulkReply):
                 # Unpack MultiBulkReply recursively as Python list.
-                result = []
-                for f in obj:
-                    item = await f
-                    result.append((await decode(item)))
-                return result
+                return [(await decode(await f)) for f in obj]
 
             else:
                 # Nonetype, or decoded bytes.

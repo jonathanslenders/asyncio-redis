@@ -11,8 +11,8 @@ CHANGELOG
 - Fix missing object asyncio.streams.IncompleteReadError
 - Intersphinx: all classes that can be imported from the top-level module must now be
   referenced from the top-level module in the docstrings too.
-  E.g. :class:`asyncio_redis.exceptions.Error` has changed to
-  :class:`asyncio_redis.Error`.
+  E.g. asyncio_redis.exceptions.Error has changed to
+  asyncio_redis.Error.
 
 
 0.15.1: 2018-07-30

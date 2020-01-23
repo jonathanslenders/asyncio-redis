@@ -16,7 +16,8 @@ class TransactionError(Error):
 
 class NotConnectedError(Error):
     """ Protocol is not connected. """
-    def __init__(self, message='Not connected'):
+
+    def __init__(self, message="Not connected"):
         super().__init__(message)
 
 
@@ -29,6 +30,7 @@ class ConnectionLostError(NotConnectedError):
     Connection lost during query.
     (Special case of ``NotConnectedError``.)
     """
+
     def __init__(self, exc):
         self.exception = exc
 

@@ -6,15 +6,17 @@ provides raw access to the redis server.
 """
 
 __all__ = (
-        'BaseEncoder',
-        'BytesEncoder',
-        'UTF8Encoder',
+    "BaseEncoder",
+    "BytesEncoder",
+    "UTF8Encoder",
 )
+
 
 class BaseEncoder:
     """
     Abstract base class for all encoders.
     """
+
     #: The native Python type from which we encode, or to which we decode.
     native_type = None
 
@@ -39,6 +41,7 @@ class BytesEncoder(BaseEncoder):
     """
     For raw access to the Redis database.
     """
+
     #: The native Python type from which we encode, or to which we decode.
     native_type = bytes
 
@@ -53,6 +56,7 @@ class StringEncoder(BaseEncoder):
     """
     Abstract base class for all string encoding encoders.
     """
+
     #: Redis keeps all values in binary. Set the encoding to be used to
     #: decode/encode Python string values from and to binary.
     encoding = None
@@ -73,4 +77,5 @@ class UTF8Encoder(StringEncoder):
     """
     Encode strings to and from utf-8 bytes.
     """
-    encoding = 'utf-8'
+
+    encoding = "utf-8"

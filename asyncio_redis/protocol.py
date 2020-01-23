@@ -3,44 +3,41 @@ import asyncio
 import enum
 import logging
 import types
+from collections import deque
+from functools import wraps
+from inspect import getcallargs, getfullargspec, signature
+
+from .cursors import Cursor, DictCursor, SetCursor, ZCursor
+from .encoders import BaseEncoder, UTF8Encoder
+from .exceptions import (
+    ConnectionLostError,
+    Error,
+    ErrorReply,
+    NoRunningScriptError,
+    NotConnectedError,
+    ScriptKilledError,
+    TimeoutError,
+    TransactionError,
+)
+from .log import logger
+from .replies import (
+    BlockingPopReply,
+    ClientListReply,
+    ConfigPairReply,
+    DictReply,
+    EvalScriptReply,
+    InfoReply,
+    ListReply,
+    PubSubReply,
+    SetReply,
+    StatusReply,
+    ZRangeReply,
+)
 
 try:
     import hiredis
 except ImportError:
     hiredis = None
-
-from collections import deque
-from functools import wraps
-from inspect import getfullargspec, getcallargs, signature
-
-from .encoders import BaseEncoder, UTF8Encoder
-from .exceptions import (
-        ConnectionLostError,
-        Error,
-        ErrorReply,
-        NoRunningScriptError,
-        NotConnectedError,
-        ScriptKilledError,
-        TimeoutError,
-        TransactionError,
-)
-from .log import logger
-from .replies import (
-        BlockingPopReply,
-        ClientListReply,
-        ConfigPairReply,
-        DictReply,
-        EvalScriptReply,
-        InfoReply,
-        ListReply,
-        PubSubReply,
-        SetReply,
-        StatusReply,
-        ZRangeReply,
-)
-
-
-from .cursors import Cursor, SetCursor, DictCursor, ZCursor
 
 
 NoneType = type(None)
@@ -68,30 +65,36 @@ class ZScoreBoundary:
     :param exclude_boundary: Exclude the boundary.
     :type exclude_boundary: bool
     """
+
     def __init__(self, value, exclude_boundary=False):
-        assert isinstance(value, float) or value in ('+inf', '-inf')
+        assert isinstance(value, float) or value in ("+inf", "-inf")
         self.value = value
         self.exclude_boundary = exclude_boundary
 
     def __repr__(self):
-        return 'ZScoreBoundary(value=%r, exclude_boundary=%r)' % (
-                    self.value, self.exclude_boundary)
+        return "ZScoreBoundary(value=%r, exclude_boundary=%r)" % (
+            self.value,
+            self.exclude_boundary,
+        )
 
-ZScoreBoundary.MIN_VALUE = ZScoreBoundary('-inf')
-ZScoreBoundary.MAX_VALUE = ZScoreBoundary('+inf')
+
+ZScoreBoundary.MIN_VALUE = ZScoreBoundary("-inf")
+ZScoreBoundary.MAX_VALUE = ZScoreBoundary("+inf")
 
 
 class ZAggregate(enum.Enum):
     """Aggregation method for zinterstore and zunionstore
     """
-    SUM = 'SUM'
-    MIN = 'MIN'
-    MAX = 'MAX'
+
+    SUM = "SUM"
+    MIN = "MIN"
+    MAX = "MAX"
 
 
 class PipelinedCall:
     """ Track record for call that is being executed in a protocol. """
-    __slots__ = ('cmd', 'is_blocking')
+
+    __slots__ = ("cmd", "is_blocking")
 
     def __init__(self, cmd, is_blocking):
         self.cmd = cmd
@@ -102,6 +105,7 @@ class MultiBulkReply:
     """
     Container for a multi bulk reply.
     """
+
     def __init__(self, protocol, count):
         #: Buffer of incoming, undelivered data, received from the parser.
         self._data_queue = []
@@ -136,7 +140,7 @@ class MultiBulkReply:
 
             # When the decode flag is given, decode bytes to native types.
             if decode:
-                data = [ self._decode(d) for d in data ]
+                data = [self._decode(d) for d in data]
 
             # When one_only flag has been given, don't return an array.
             if one_only:
@@ -155,7 +159,7 @@ class MultiBulkReply:
         elif result is None:
             return result
         else:
-            raise AssertionError('Invalid type: %r' % type(result))
+            raise AssertionError("Invalid type: %r" % type(result))
 
     def _read(self, decode=True, count=1, _one=False):
         """ Do read operation on the queue. Return future. """
@@ -184,11 +188,12 @@ class MultiBulkReply:
             yield self._read(_one=True)
 
     def __repr__(self):
-        return 'MultiBulkReply(protocol=%r, count=%r)' % (self.protocol, self.count)
+        return "MultiBulkReply(protocol=%r, count=%r)" % (self.protocol, self.count)
 
 
 class _ScanPart:
     """ Internal: result chunk of a scan operation. """
+
     def __init__(self, new_cursor_pos, items):
         self.new_cursor_pos = new_cursor_pos
         self.items = items
@@ -205,6 +210,7 @@ class PostProcessors:
     returned either as a ListReply (which has some special streaming
     functionality), but also as a Python list.
     """
+
     @classmethod
     def get_all(cls, return_type):
         """
@@ -213,7 +219,7 @@ class PostProcessors:
         default = cls.get_default(return_type)
         alternate = cls.get_alternate_post_processor(return_type)
 
-        result = [ ('', return_type, default) ]
+        result = [("", return_type, default)]
         if alternate:
             result.append(alternate)
         return result
@@ -222,31 +228,28 @@ class PostProcessors:
     def get_default(cls, return_type):
         """ Give post processor function for return type. """
         return {
-                ListReply: cls.multibulk_as_list,
-                SetReply: cls.multibulk_as_set,
-                DictReply: cls.multibulk_as_dict,
-
-                float: cls.bytes_to_float,
-                (float, NoneType): cls.bytes_to_float_or_none,
-                NativeType: cls.bytes_to_native,
-                (NativeType, NoneType): cls.bytes_to_native_or_none,
-                InfoReply: cls.bytes_to_info,
-                ClientListReply: cls.bytes_to_clientlist,
-                str: cls.bytes_to_str,
-                bool: cls.int_to_bool,
-                BlockingPopReply: cls.multibulk_as_blocking_pop_reply,
-                ZRangeReply: cls.multibulk_as_zrangereply,
-
-                StatusReply: cls.bytes_to_status_reply,
-                (StatusReply, NoneType): cls.bytes_to_status_reply_or_none,
-                int: None,
-                (int, NoneType): None,
-                ConfigPairReply: cls.multibulk_as_configpair,
-                ListOf(bool): cls.multibulk_as_boolean_list,
-                _ScanPart: cls.multibulk_as_scanpart,
-                EvalScriptReply: cls.any_to_evalscript,
-
-                NoneType: None,
+            ListReply: cls.multibulk_as_list,
+            SetReply: cls.multibulk_as_set,
+            DictReply: cls.multibulk_as_dict,
+            float: cls.bytes_to_float,
+            (float, NoneType): cls.bytes_to_float_or_none,
+            NativeType: cls.bytes_to_native,
+            (NativeType, NoneType): cls.bytes_to_native_or_none,
+            InfoReply: cls.bytes_to_info,
+            ClientListReply: cls.bytes_to_clientlist,
+            str: cls.bytes_to_str,
+            bool: cls.int_to_bool,
+            BlockingPopReply: cls.multibulk_as_blocking_pop_reply,
+            ZRangeReply: cls.multibulk_as_zrangereply,
+            StatusReply: cls.bytes_to_status_reply,
+            (StatusReply, NoneType): cls.bytes_to_status_reply_or_none,
+            int: None,
+            (int, NoneType): None,
+            ConfigPairReply: cls.multibulk_as_configpair,
+            ListOf(bool): cls.multibulk_as_boolean_list,
+            _ScanPart: cls.multibulk_as_scanpart,
+            EvalScriptReply: cls.any_to_evalscript,
+            NoneType: None,
         }[return_type]
 
     @classmethod
@@ -256,22 +259,28 @@ class PostProcessors:
         original_post_processor = cls.get_default(return_type)
 
         if return_type == ListReply:
+
             async def as_list(protocol, result):
                 result = await original_post_processor(protocol, result)
                 return await result.aslist()
-            return '_aslist', list, as_list
+
+            return "_aslist", list, as_list
 
         elif return_type == SetReply:
+
             async def as_set(protocol, result):
                 result = await original_post_processor(protocol, result)
                 return await result.asset()
-            return '_asset', set, as_set
+
+            return "_asset", set, as_set
 
         elif return_type in (DictReply, ZRangeReply):
+
             async def as_dict(protocol, result):
                 result = await original_post_processor(protocol, result)
                 return await result.asdict()
-            return '_asdict', dict, as_dict
+
+            return "_asdict", dict, as_dict
 
     # === Post processor handlers below. ===
 
@@ -283,7 +292,7 @@ class PostProcessors:
         # Turn the array of integers into booleans.
         assert isinstance(result, MultiBulkReply)
         values = await ListReply(result).aslist()
-        return [ bool(v) for v in values ]
+        return [bool(v) for v in values]
 
     async def multibulk_as_set(protocol, result):
         assert isinstance(result, MultiBulkReply)
@@ -299,7 +308,7 @@ class PostProcessors:
 
     async def multibulk_as_blocking_pop_reply(protocol, result):
         if result is None:
-            raise TimeoutError('Timeout in blocking pop')
+            raise TimeoutError("Timeout in blocking pop")
         else:
             assert isinstance(result, MultiBulkReply)
             list_name, value = await ListReply(result).aslist()
@@ -333,12 +342,12 @@ class PostProcessors:
 
     async def bytes_to_status_reply(protocol, result):
         assert isinstance(result, bytes)
-        return StatusReply(result.decode('utf-8'))
+        return StatusReply(result.decode("utf-8"))
 
     async def bytes_to_status_reply_or_none(protocol, result):
         assert isinstance(result, (bytes, NoneType))
         if result:
-            return StatusReply(result.decode('utf-8'))
+            return StatusReply(result.decode("utf-8"))
 
     async def bytes_to_clientlist(protocol, result):
         assert isinstance(result, bytes)
@@ -346,7 +355,7 @@ class PostProcessors:
 
     async def int_to_bool(protocol, result):
         assert isinstance(result, int)
-        return bool(result) # Convert int to bool
+        return bool(result)  # Convert int to bool
 
     async def bytes_to_native(protocol, result):
         assert isinstance(result, bytes)
@@ -354,7 +363,7 @@ class PostProcessors:
 
     async def bytes_to_str(protocol, result):
         assert isinstance(result, bytes)
-        return result.decode('ascii')
+        return result.decode("ascii")
 
     async def bytes_to_native_or_none(protocol, result):
         if result is None:
@@ -381,11 +390,12 @@ class PostProcessors:
 
 class ListOf:
     """ Annotation helper for protocol methods. """
+
     def __init__(self, type_):
         self.type = type_
 
     def __repr__(self):
-        return 'ListOf(%r)' % self.type
+        return "ListOf(%r)" % self.type
 
     def __eq__(self, other):
         return isinstance(other, ListOf) and other.type == self.type
@@ -398,8 +408,9 @@ class NativeType:
     """
     Constant which represents the native Python type that's used.
     """
+
     def __new__(cls):
-        raise Exception('NativeType is not meant to be initialized.')
+        raise Exception("NativeType is not meant to be initialized.")
 
 
 class CommandCreator:
@@ -414,22 +425,23 @@ class CommandCreator:
     Warning: We use the annotations of `method` extensively for type checking
              and determining which post processor to choose.
     """
+
     def __init__(self, method):
         self.method = method
 
     @property
     def specs(self):
-       """ Argspecs """
-       return getfullargspec(self.method)
+        """ Argspecs """
+        return getfullargspec(self.method)
 
     @property
     def return_type(self):
         """ Return type as defined in the method's annotation. """
-        return self.specs.annotations.get('return', None)
+        return self.specs.annotations.get("return", None)
 
     @property
     def params(self):
-        return { k:v for k, v in self.specs.annotations.items() if k != 'return' }
+        return {k: v for k, v in self.specs.annotations.items() if k != "return"}
 
     @classmethod
     def get_real_type(cls, protocol, type_):
@@ -445,7 +457,10 @@ class CommandCreator:
         if type_ == NativeType:
             return protocol.native_type
         elif isinstance(type_, ListOf):
-            return (list, types.GeneratorType) # We don't check the content of the list.
+            return (
+                list,
+                types.GeneratorType,
+            )  # We don't check the content of the list.
         else:
             return type_
 
@@ -454,6 +469,7 @@ class CommandCreator:
         params = self.params
 
         if params:
+
             def typecheck_input(protocol, *a, **kw):
                 """
                 Given a protocol instance and *a/**kw of this method, raise TypeError
@@ -465,13 +481,23 @@ class CommandCreator:
                     if a and isinstance(a[0], (Transaction, _NoTransactionType)):
                         a = a[1:]
 
-                    for name, value in getcallargs(self.method, None, _NoTransaction, *a, **kw).items():
+                    for name, value in getcallargs(
+                        self.method, None, _NoTransaction, *a, **kw
+                    ).items():
                         if name in params:
                             real_type = self.get_real_type(protocol, params[name])
                             if not isinstance(value, real_type):
-                                raise TypeError('RedisProtocol.%s received %r, expected %r' %
-                                                (self.method.__name__, type(value).__name__, real_type))
+                                raise TypeError(
+                                    "RedisProtocol.%s received %r, expected %r"
+                                    % (
+                                        self.method.__name__,
+                                        type(value).__name__,
+                                        real_type,
+                                    )
+                                )
+
         else:
+
             def typecheck_input(protocol, *a, **kw):
                 pass
 
@@ -479,7 +505,10 @@ class CommandCreator:
 
     def _create_return_typechecker(self, return_type):
         """ Return function that does typechecking on output data. """
-        if return_type and not isinstance(return_type, str): # Exclude 'Transaction'/'Subscription' which are 'str'
+        if return_type and not isinstance(
+            return_type, str
+        ):  # Exclude 'Transaction'/'Subscription' which are 'str'
+
             def typecheck_return(protocol, result):
                 """
                 Given protocol and result value. Raise TypeError if the result is of the wrong type.
@@ -487,9 +516,17 @@ class CommandCreator:
                 if protocol.enable_typechecking:
                     expected_type = self.get_real_type(protocol, return_type)
                     if not isinstance(result, expected_type):
-                        raise TypeError('Got unexpected return type %r in RedisProtocol.%s, expected %r' %
-                                        (type(result).__name__, self.method.__name__, expected_type))
+                        raise TypeError(
+                            "Got unexpected return type %r in RedisProtocol.%s, expected %r"
+                            % (
+                                type(result).__name__,
+                                self.method.__name__,
+                                expected_type,
+                            )
+                        )
+
         else:
+
             def typecheck_return(protocol, result):
                 pass
 
@@ -504,7 +541,7 @@ class CommandCreator:
         parameters = signature(self.method).parameters
         # The below differs from tuple(parameters.keys()) as it preserves the
         # * and ** prefixes of variadic arguments
-        argnames = tuple(str(p).split(':')[0] for p in parameters.values())
+        argnames = tuple(str(p).split(":")[0] for p in parameters.values())
 
         # Use function annotations to generate param documentation.
 
@@ -531,46 +568,47 @@ class CommandCreator:
                     DictCursor: ":class:`DictCursor <asyncio_redis.cursors.DictCursor>`",
                     ZCursor: ":class:`ZCursor <asyncio_redis.cursors.ZCursor>`",
                     _ScanPart: ":class:`_ScanPart",
-                    int: 'int',
-                    bool: 'bool',
-                    dict: 'dict',
-                    float: 'float',
-                    str: 'str',
-                    bytes: 'bytes',
-                    list: 'list',
-                    set: 'set',
-
+                    int: "int",
+                    bool: "bool",
+                    dict: "dict",
+                    float: "float",
+                    str: "str",
+                    bytes: "bytes",
+                    list: "list",
+                    set: "set",
                     # Because of circular references, we cannot use the real types here.
-                    'Transaction': ":class:`asyncio_redis.Transaction`",
-                    'Subscription': ":class:`asyncio_redis.Subscription`",
-                    'Script': ":class:`~asyncio_redis.Script`",
+                    "Transaction": ":class:`asyncio_redis.Transaction`",
+                    "Subscription": ":class:`asyncio_redis.Subscription`",
+                    "Script": ":class:`~asyncio_redis.Script`",
                 }[type_]
             except KeyError:
                 if isinstance(type_, ListOf):
                     return "List or iterable of %s" % get_name(type_.type)
                 if isinstance(type_, tuple):
-                    return ' or '.join(get_name(t) for t in type_)
-                raise TypeError('Unknown annotation %r' % type_)
+                    return " or ".join(get_name(t) for t in type_)
+                raise TypeError("Unknown annotation %r" % type_)
 
         def get_param(k, v):
-            return ':param %s: %s\n' % (k, get_name(v))
+            return ":param %s: %s\n" % (k, get_name(v))
 
         params_str = [get_param(k, v) for k, v in self.params.items()]
-        returns = ':returns: (Future of) %s\n' % get_name(return_type) if return_type else ''
+        returns = (
+            ":returns: (Future of) %s\n" % get_name(return_type) if return_type else ""
+        )
 
-        return '%s(%s)\n%s\n\n%s%s' % (
+        return "%s(%s)\n%s\n\n%s%s" % (
             self.method.__name__ + suffix,
-            ', '.join(argnames),
+            ", ".join(argnames),
             self.method.__doc__,
-            ''.join(params_str),
-            returns
+            "".join(params_str),
+            returns,
         )
 
     def get_methods(self):
         """
         Return all the methods to be used in the RedisProtocol class.
         """
-        return [ ('', self._get_wrapped_method(None, '', self.return_type)) ]
+        return [("", self._get_wrapped_method(None, "", self.return_type))]
 
     def _get_wrapped_method(self, post_process, suffix, return_type):
         """
@@ -614,7 +652,7 @@ class CommandCreator:
             # When calling from a pubsub context
             elif protocol_self.in_pubsub:
                 if not a or a[0] != protocol_self._subscription:
-                    raise Error('Cannot run command inside pubsub subscription.')
+                    raise Error("Cannot run command inside pubsub subscription.")
 
                 else:
                     typecheck_input(protocol_self, *a[1:], **kw)
@@ -645,6 +683,7 @@ class QueryCommandCreator(CommandCreator):
     processed to get the right Python type. We inspect here the
     'returns'-annotation to determine the correct post processor.
     """
+
     def get_methods(self):
         # (Some commands, e.g. those that return a ListReply can generate
         # multiple protocol methods.  One that does return the ListReply, but
@@ -653,12 +692,14 @@ class QueryCommandCreator(CommandCreator):
         result = []
 
         for suffix, return_type, post_processor in all_post_processors:
-            result.append( (suffix, self._get_wrapped_method(post_processor, suffix, return_type)) )
+            result.append(
+                (suffix, self._get_wrapped_method(post_processor, suffix, return_type))
+            )
 
         return result
 
 
-_SMALL_INTS = list(str(i).encode('ascii') for i in range(1000))
+_SMALL_INTS = list(str(i).encode("ascii") for i in range(1000))
 
 
 # List of all command methods.
@@ -668,6 +709,7 @@ _all_commands = []
 class _command:
     """ Mark method as command (to be passed through CommandCreator for the
     creation of a protocol method) """
+
     creator = CommandCreator
 
     def __init__(self, method):
@@ -681,6 +723,7 @@ class _query_command(_command):
     NOTE: be sure to choose the correct 'returns'-annotation. This will automatially
     determine the correct post processor function in :class:`PostProcessors`.
     """
+
     creator = QueryCommandCreator
 
     def __init__(self, method):
@@ -691,12 +734,13 @@ class _RedisProtocolMeta(type):
     """
     Metaclass for `RedisProtocol` which applies the _command decorator.
     """
+
     def __new__(cls, name, bases, attrs):
         for attr_name, value in dict(attrs).items():
             if isinstance(value, _command):
                 creator = value.creator(value.method)
                 for suffix, method in creator.get_methods():
-                    attrs[attr_name + suffix] =  method
+                    attrs[attr_name + suffix] = method
 
                     # Register command.
                     _all_commands.append(attr_name + suffix)
@@ -725,13 +769,22 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                                 enabled.
     :type enable_typechecking: bool
     """
-    def __init__(self, *, password=None, db=0, encoder=None, connection_lost_callback=None, enable_typechecking=True):
+
+    def __init__(
+        self,
+        *,
+        password=None,
+        db=0,
+        encoder=None,
+        connection_lost_callback=None,
+        enable_typechecking=True,
+    ):
         if encoder is None:
             encoder = UTF8Encoder()
 
         assert isinstance(db, int)
         assert isinstance(encoder, BaseEncoder)
-        assert encoder.native_type, 'Encoder.native_type not defined'
+        assert encoder.native_type, "Encoder.native_type not defined"
         assert not password or isinstance(password, encoder.native_type)
 
         self.password = password
@@ -745,36 +798,38 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         self.enable_typechecking = enable_typechecking
 
         self.transport = None
-        self._queue = deque() # Input parser queues
-        self._messages_queue = None # Pubsub queue
-        self._is_connected = False # True as long as the underlying transport is connected.
+        self._queue = deque()  # Input parser queues
+        self._messages_queue = None  # Pubsub queue
+        self._is_connected = (
+            False  # True as long as the underlying transport is connected.
+        )
 
         # Pubsub state
         self._in_pubsub = False
         self._subscription = None
-        self._pubsub_channels = set() # Set of channels
-        self._pubsub_patterns = set() # Set of patterns
+        self._pubsub_channels = set()  # Set of channels
+        self._pubsub_patterns = set()  # Set of patterns
 
         # Transaction related stuff.
         self._transaction_lock = asyncio.Lock()
         self._transaction = None
-        self._transaction_response_queue = None # Transaction answer queue
+        self._transaction_response_queue = None  # Transaction answer queue
 
         self._line_received_handlers = {
-            b'+': self._handle_status_reply,
-            b'-': self._handle_error_reply,
-            b'$': self._handle_bulk_reply,
-            b'*': self._handle_multi_bulk_reply,
-            b':': self._handle_int_reply,
+            b"+": self._handle_status_reply,
+            b"-": self._handle_error_reply,
+            b"$": self._handle_bulk_reply,
+            b"*": self._handle_multi_bulk_reply,
+            b":": self._handle_int_reply,
         }
 
     def connection_made(self, transport):
         self.transport = transport
         self._is_connected = True
-        logger.log(logging.INFO, 'Redis connection made')
+        logger.log(logging.INFO, "Redis connection made")
 
         # Pipelined calls
-        self._pipelined_calls = set() # Set of all the pipelined calls.
+        self._pipelined_calls = set()  # Set of all the pipelined calls.
 
         # Start parsing reader stream.
         self._reader = asyncio.StreamReader()
@@ -792,10 +847,14 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             #  If we are in pubsub mode, send channel subscriptions again.
             if self._in_pubsub:
                 if self._pubsub_channels:
-                    await self._subscribe(self._subscription, list(self._pubsub_channels)) # TODO: unittest this
+                    await self._subscribe(
+                        self._subscription, list(self._pubsub_channels)
+                    )  # TODO: unittest this
 
                 if self._pubsub_patterns:
-                    await self._psubscribe(self._subscription, list(self._pubsub_patterns))
+                    await self._psubscribe(
+                        self._subscription, list(self._pubsub_patterns)
+                    )
 
         loop = asyncio.get_event_loop()
         loop.create_task(initialize())
@@ -804,28 +863,28 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         """ Process data received from Redis server.  """
         self._reader.feed_data(data)
 
-    def _encode_int(self, value:int) -> bytes:
+    def _encode_int(self, value: int) -> bytes:
         """ Encodes an integer to bytes. (always ascii) """
-        if 0 < value < 1000: # For small values, take pre-encoded string.
+        if 0 < value < 1000:  # For small values, take pre-encoded string.
             return _SMALL_INTS[value]
         else:
-            return str(value).encode('ascii')
+            return str(value).encode("ascii")
 
-    def _encode_float(self, value:float) -> bytes:
+    def _encode_float(self, value: float) -> bytes:
         """ Encodes a float to bytes. (always ascii) """
-        return str(value).encode('ascii')
+        return str(value).encode("ascii")
 
-    def _encode_zscore_boundary(self, value:ZScoreBoundary) -> str:
+    def _encode_zscore_boundary(self, value: ZScoreBoundary) -> str:
         """ Encodes a zscore boundary. (always ascii) """
         if isinstance(value.value, str):
-            return str(value.value).encode('ascii') # +inf and -inf
+            return str(value.value).encode("ascii")  # +inf and -inf
         elif value.exclude_boundary:
-            return str("(%f" % value.value).encode('ascii')
+            return str("(%f" % value.value).encode("ascii")
         else:
-            return str("%f" % value.value).encode('ascii')
+            return str("%f" % value.value).encode("ascii")
 
     def eof_received(self):
-        logger.log(logging.INFO, 'EOF received in RedisProtocol')
+        logger.log(logging.INFO, "EOF received in RedisProtocol")
         self._reader.feed_eof()
 
     def connection_lost(self, exc):
@@ -849,7 +908,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             if not f.cancelled():
                 f.set_exception(ConnectionLostError(exc))
 
-        logger.log(logging.INFO, 'Redis connection lost')
+        logger.log(logging.INFO, "Redis connection lost")
 
         # Call connection_lost callback
         if self._connection_lost_callback:
@@ -904,19 +963,19 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             raise ConnectionLostError(None)
 
     async def _handle_status_reply(self, cb):
-        line = (await self._reader.readline()).rstrip(b'\r\n')
+        line = (await self._reader.readline()).rstrip(b"\r\n")
         cb(line)
 
     async def _handle_int_reply(self, cb):
-        line = (await self._reader.readline()).rstrip(b'\r\n')
+        line = (await self._reader.readline()).rstrip(b"\r\n")
         cb(int(line))
 
     async def _handle_error_reply(self, cb):
-        line = (await self._reader.readline()).rstrip(b'\r\n')
-        cb(ErrorReply(line.decode('ascii')))
+        line = (await self._reader.readline()).rstrip(b"\r\n")
+        cb(ErrorReply(line.decode("ascii")))
 
     async def _handle_bulk_reply(self, cb):
-        length = int((await self._reader.readline()).rstrip(b'\r\n'))
+        length = int((await self._reader.readline()).rstrip(b"\r\n"))
         if length == -1:
             # None bulk reply
             cb(None)
@@ -927,14 +986,14 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
             # Ignore trailing newline.
             remaining = await self._reader.readline()
-            assert remaining.rstrip(b'\r\n') == b''
+            assert remaining.rstrip(b"\r\n") == b""
 
     async def _handle_multi_bulk_reply(self, cb):
-                # NOTE: the reason for passing the callback `cb` in here is
-                #       mainly because we want to return the result object
-                #       especially in this case before the input is read
-                #       completely. This allows a streaming API.
-        count = int((await self._reader.readline()).rstrip(b'\r\n'))
+        # NOTE: the reason for passing the callback `cb` in here is
+        #       mainly because we want to return the result object
+        #       especially in this case before the input is read
+        #       completely. This allows a streaming API.
+        count = int((await self._reader.readline()).rstrip(b"\r\n"))
 
         # Handle multi-bulk none.
         # (Used when a transaction exec fails.)
@@ -958,15 +1017,24 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     async def _handle_pubsub_multibulk_reply(self, multibulk_reply):
         # Read first item of the multi bulk reply raw.
         type = await multibulk_reply._read(decode=False, _one=True)
-        assert type in (b'message', b'subscribe', b'unsubscribe', b'pmessage', b'psubscribe', b'punsubscribe')
+        assert type in (
+            b"message",
+            b"subscribe",
+            b"unsubscribe",
+            b"pmessage",
+            b"psubscribe",
+            b"punsubscribe",
+        )
 
-        if type == b'message':
+        if type == b"message":
             channel, value = await multibulk_reply._read(count=2)
             await self._subscription._messages_queue.put(PubSubReply(channel, value))
 
-        elif type == b'pmessage':
+        elif type == b"pmessage":
             pattern, channel, value = await multibulk_reply._read(count=3)
-            await self._subscription._messages_queue.put(PubSubReply(channel, value, pattern=pattern))
+            await self._subscription._messages_queue.put(
+                PubSubReply(channel, value, pattern=pattern)
+            )
 
         # We can safely ignore 'subscribe'/'unsubscribe' replies at this point,
         # they don't contain anything really useful.
@@ -989,16 +1057,18 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         # of arguments first.
 
         # Serialize and write header (number of arguments.)
-        data += [ b'*', self._encode_int(len(args)), b'\r\n' ]
+        data += [b"*", self._encode_int(len(args)), b"\r\n"]
 
         # Write arguments.
         for arg in args:
-            data += [ b'$', self._encode_int(len(arg)), b'\r\n', arg, b'\r\n' ]
+            data += [b"$", self._encode_int(len(arg)), b"\r\n", arg, b"\r\n"]
 
         # Flush the last part
-        self.transport.write(b''.join(data))
+        self.transport.write(b"".join(data))
 
-    async def _get_answer(self, transaction, answer_f, _bypass=False, call=None):  # XXX: rename _bypass to not_queued
+    async def _get_answer(
+        self, transaction, answer_f, _bypass=False, call=None
+    ):  # XXX: rename _bypass to not_queued
         """
         Return an answer to the pipelined query.
         (Or when we are in a transaction, return a future for the answer.)
@@ -1008,12 +1078,15 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
         if transaction != _NoTransaction and not _bypass:
             # When the connection is inside a transaction, the query will be queued.
-            if result != b'QUEUED':
-                raise Error('Expected to receive QUEUED for query in transaction, received %r.' % result)
+            if result != b"QUEUED":
+                raise Error(
+                    "Expected to receive QUEUED for query in transaction, received %r."
+                    % result
+                )
 
             # Return a future which will contain the result when it arrives.
             f = asyncio.Future()
-            self._transaction_response_queue.append( (f, call) )
+            self._transaction_response_queue.append((f, call))
             return f
         else:
             if call:
@@ -1074,31 +1147,39 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         # TODO: when set_blocking=True, only release lock after reading the answer.
         #       (it doesn't make sense to free the input and pipeline commands in that case.)
 
-
         # Receive answer.
-        result = await self._get_answer(transaction, answer_f, _bypass=_bypass, call=call)
+        result = await self._get_answer(
+            transaction, answer_f, _bypass=_bypass, call=call
+        )
         return result
 
     # Internal
 
     @_query_command
-    def auth(self, tr, password:NativeType) -> StatusReply:
+    def auth(self, tr, password: NativeType) -> StatusReply:
         """ Authenticate to the server """
         self.password = password
-        return self._query(tr, b'auth', self.encode_from_native(password))
+        return self._query(tr, b"auth", self.encode_from_native(password))
 
     @_query_command
-    def select(self, tr, db:int) -> StatusReply:
+    def select(self, tr, db: int) -> StatusReply:
         """ Change the selected database for the current connection """
         self.db = db
-        return self._query(tr, b'select', self._encode_int(db))
+        return self._query(tr, b"select", self._encode_int(db))
 
     # Strings
 
     @_query_command
-    def set(self, tr, key:NativeType, value:NativeType,
-            expire:(int, NoneType)=None, pexpire:(int, NoneType)=None,
-            only_if_not_exists:bool=False, only_if_exists:bool=False) -> (StatusReply, NoneType):
+    def set(
+        self,
+        tr,
+        key: NativeType,
+        value: NativeType,
+        expire: (int, NoneType) = None,
+        pexpire: (int, NoneType) = None,
+        only_if_not_exists: bool = False,
+        only_if_exists: bool = False,
+    ) -> (StatusReply, NoneType):
         """
         Set the string value of a key
 
@@ -1121,384 +1202,559 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
             await protocol.set('key', 'value', pexpire=1000, only_if_exists=True)
         """
-        params = [
-            b'set',
-            self.encode_from_native(key),
-            self.encode_from_native(value)
-        ]
+        params = [b"set", self.encode_from_native(key), self.encode_from_native(value)]
         if expire is not None:
-            params.extend((b'ex', self._encode_int(expire)))
+            params.extend((b"ex", self._encode_int(expire)))
         if pexpire is not None:
-            params.extend((b'px', self._encode_int(pexpire)))
+            params.extend((b"px", self._encode_int(pexpire)))
         if only_if_not_exists and only_if_exists:
-            raise ValueError("only_if_not_exists and only_if_exists cannot be true simultaniously")
+            raise ValueError(
+                "only_if_not_exists and only_if_exists cannot be true simultaniously"
+            )
         if only_if_not_exists:
-            params.append(b'nx')
+            params.append(b"nx")
         if only_if_exists:
-            params.append(b'xx')
+            params.append(b"xx")
 
         return self._query(tr, *params)
 
     @_query_command
-    def setex(self, tr, key:NativeType, seconds:int, value:NativeType) -> StatusReply:
+    def setex(
+        self, tr, key: NativeType, seconds: int, value: NativeType
+    ) -> StatusReply:
         """ Set the string value of a key with expire """
-        return self._query(tr, b'setex', self.encode_from_native(key),
-                self._encode_int(seconds), self.encode_from_native(value))
+        return self._query(
+            tr,
+            b"setex",
+            self.encode_from_native(key),
+            self._encode_int(seconds),
+            self.encode_from_native(value),
+        )
 
     @_query_command
-    def setnx(self, tr, key:NativeType, value:NativeType) -> bool:
+    def setnx(self, tr, key: NativeType, value: NativeType) -> bool:
         """ Set the string value of a key if it does not exist.
         Returns True if value is successfully set """
-        return self._query(tr, b'setnx', self.encode_from_native(key), self.encode_from_native(value))
+        return self._query(
+            tr, b"setnx", self.encode_from_native(key), self.encode_from_native(value)
+        )
 
     @_query_command
-    def get(self, tr, key:NativeType) -> (NativeType, NoneType):
+    def get(self, tr, key: NativeType) -> (NativeType, NoneType):
         """ Get the value of a key """
-        return self._query(tr, b'get', self.encode_from_native(key))
+        return self._query(tr, b"get", self.encode_from_native(key))
 
     @_query_command
-    def mget(self, tr, keys:ListOf(NativeType)) -> ListReply:
+    def mget(self, tr, keys: ListOf(NativeType)) -> ListReply:
         """ Returns the values of all specified keys. """
-        return self._query(tr, b'mget', *map(self.encode_from_native, keys))
+        return self._query(tr, b"mget", *map(self.encode_from_native, keys))
 
     @_query_command
-    def strlen(self, tr, key:NativeType) -> int:
+    def strlen(self, tr, key: NativeType) -> int:
         """ Returns the length of the string value stored at key. An error is
         returned when key holds a non-string value.  """
-        return self._query(tr, b'strlen', self.encode_from_native(key))
+        return self._query(tr, b"strlen", self.encode_from_native(key))
 
     @_query_command
-    def append(self, tr, key:NativeType, value:NativeType) -> int:
+    def append(self, tr, key: NativeType, value: NativeType) -> int:
         """ Append a value to a key """
-        return self._query(tr, b'append', self.encode_from_native(key), self.encode_from_native(value))
+        return self._query(
+            tr, b"append", self.encode_from_native(key), self.encode_from_native(value)
+        )
 
     @_query_command
-    def getset(self, tr, key:NativeType, value:NativeType) -> (NativeType, NoneType):
+    def getset(self, tr, key: NativeType, value: NativeType) -> (NativeType, NoneType):
         """ Set the string value of a key and return its old value """
-        return self._query(tr, b'getset', self.encode_from_native(key), self.encode_from_native(value))
+        return self._query(
+            tr, b"getset", self.encode_from_native(key), self.encode_from_native(value)
+        )
 
     @_query_command
-    def incr(self, tr, key:NativeType) -> int:
+    def incr(self, tr, key: NativeType) -> int:
         """ Increment the integer value of a key by one """
-        return self._query(tr, b'incr', self.encode_from_native(key))
+        return self._query(tr, b"incr", self.encode_from_native(key))
 
     @_query_command
-    def incrby(self, tr, key:NativeType, increment:int) -> int:
+    def incrby(self, tr, key: NativeType, increment: int) -> int:
         """ Increment the integer value of a key by the given amount """
-        return self._query(tr, b'incrby', self.encode_from_native(key), self._encode_int(increment))
+        return self._query(
+            tr, b"incrby", self.encode_from_native(key), self._encode_int(increment)
+        )
 
     @_query_command
-    def decr(self, tr, key:NativeType) -> int:
+    def decr(self, tr, key: NativeType) -> int:
         """ Decrement the integer value of a key by one """
-        return self._query(tr, b'decr', self.encode_from_native(key))
+        return self._query(tr, b"decr", self.encode_from_native(key))
 
     @_query_command
-    def decrby(self, tr, key:NativeType, increment:int) -> int:
+    def decrby(self, tr, key: NativeType, increment: int) -> int:
         """ Decrement the integer value of a key by the given number """
-        return self._query(tr, b'decrby', self.encode_from_native(key), self._encode_int(increment))
+        return self._query(
+            tr, b"decrby", self.encode_from_native(key), self._encode_int(increment)
+        )
 
     @_query_command
     def randomkey(self, tr) -> NativeType:
         """ Return a random key from the keyspace """
-        return self._query(tr, b'randomkey')
+        return self._query(tr, b"randomkey")
 
     @_query_command
-    def exists(self, tr, key:NativeType) -> bool:
+    def exists(self, tr, key: NativeType) -> bool:
         """ Determine if a key exists """
-        return self._query(tr, b'exists', self.encode_from_native(key))
+        return self._query(tr, b"exists", self.encode_from_native(key))
 
     @_query_command
-    def delete(self, tr, keys:ListOf(NativeType)) -> int:
+    def delete(self, tr, keys: ListOf(NativeType)) -> int:
         """ Delete a key """
-        return self._query(tr, b'del', *map(self.encode_from_native, keys))
+        return self._query(tr, b"del", *map(self.encode_from_native, keys))
 
     @_query_command
-    def move(self, tr, key:NativeType, database:int) -> int:
+    def move(self, tr, key: NativeType, database: int) -> int:
         """ Move a key to another database """
-        return self._query(tr, b'move', self.encode_from_native(key), self._encode_int(database)) # TODO: unittest
+        return self._query(
+            tr, b"move", self.encode_from_native(key), self._encode_int(database)
+        )  # TODO: unittest
 
     @_query_command
-    def rename(self, tr, key:NativeType, newkey:NativeType) -> StatusReply:
+    def rename(self, tr, key: NativeType, newkey: NativeType) -> StatusReply:
         """ Rename a key """
-        return self._query(tr, b'rename', self.encode_from_native(key), self.encode_from_native(newkey))
+        return self._query(
+            tr, b"rename", self.encode_from_native(key), self.encode_from_native(newkey)
+        )
 
     @_query_command
-    def renamenx(self, tr, key:NativeType, newkey:NativeType) -> int:
+    def renamenx(self, tr, key: NativeType, newkey: NativeType) -> int:
         """ Rename a key, only if the new key does not exist
         (Returns 1 if the key was successfully renamed.) """
-        return self._query(tr, b'renamenx', self.encode_from_native(key), self.encode_from_native(newkey))
+        return self._query(
+            tr,
+            b"renamenx",
+            self.encode_from_native(key),
+            self.encode_from_native(newkey),
+        )
 
     @_query_command
-    def bitop_and(self, tr, destkey:NativeType, srckeys:ListOf(NativeType)) -> int:
+    def bitop_and(self, tr, destkey: NativeType, srckeys: ListOf(NativeType)) -> int:
         """ Perform a bitwise AND operation between multiple keys. """
-        return self._bitop(tr, b'and', destkey, srckeys)
+        return self._bitop(tr, b"and", destkey, srckeys)
 
     @_query_command
-    def bitop_or(self, tr, destkey:NativeType, srckeys:ListOf(NativeType)) -> int:
+    def bitop_or(self, tr, destkey: NativeType, srckeys: ListOf(NativeType)) -> int:
         """ Perform a bitwise OR operation between multiple keys. """
-        return self._bitop(tr, b'or', destkey, srckeys)
+        return self._bitop(tr, b"or", destkey, srckeys)
 
     @_query_command
-    def bitop_xor(self, tr, destkey:NativeType, srckeys:ListOf(NativeType)) -> int:
+    def bitop_xor(self, tr, destkey: NativeType, srckeys: ListOf(NativeType)) -> int:
         """ Perform a bitwise XOR operation between multiple keys. """
-        return self._bitop(tr, b'xor', destkey, srckeys)
+        return self._bitop(tr, b"xor", destkey, srckeys)
 
     def _bitop(self, tr, op, destkey, srckeys):
-        return self._query(tr, b'bitop', op, self.encode_from_native(destkey), *map(self.encode_from_native, srckeys))
+        return self._query(
+            tr,
+            b"bitop",
+            op,
+            self.encode_from_native(destkey),
+            *map(self.encode_from_native, srckeys),
+        )
 
     @_query_command
-    def bitop_not(self, tr, destkey:NativeType, key:NativeType) -> int:
+    def bitop_not(self, tr, destkey: NativeType, key: NativeType) -> int:
         """ Perform a bitwise NOT operation between multiple keys. """
-        return self._query(tr, b'bitop', b'not', self.encode_from_native(destkey), self.encode_from_native(key))
+        return self._query(
+            tr,
+            b"bitop",
+            b"not",
+            self.encode_from_native(destkey),
+            self.encode_from_native(key),
+        )
 
     @_query_command
-    def bitcount(self, tr, key:NativeType, start:int=0, end:int=-1) -> int:
+    def bitcount(self, tr, key: NativeType, start: int = 0, end: int = -1) -> int:
         """ Count the number of set bits (population counting) in a string. """
-        return self._query(tr, b'bitcount', self.encode_from_native(key), self._encode_int(start), self._encode_int(end))
+        return self._query(
+            tr,
+            b"bitcount",
+            self.encode_from_native(key),
+            self._encode_int(start),
+            self._encode_int(end),
+        )
 
     @_query_command
-    def getbit(self, tr, key:NativeType, offset:int) -> bool:
+    def getbit(self, tr, key: NativeType, offset: int) -> bool:
         """ Returns the bit value at offset in the string value stored at key """
-        return self._query(tr, b'getbit', self.encode_from_native(key), self._encode_int(offset))
+        return self._query(
+            tr, b"getbit", self.encode_from_native(key), self._encode_int(offset)
+        )
 
     @_query_command
-    def setbit(self, tr, key:NativeType, offset:int, value:bool) -> bool:
+    def setbit(self, tr, key: NativeType, offset: int, value: bool) -> bool:
         """ Sets or clears the bit at offset in the string value stored at key """
-        return self._query(tr, b'setbit', self.encode_from_native(key), self._encode_int(offset),
-                self._encode_int(int(value)))
+        return self._query(
+            tr,
+            b"setbit",
+            self.encode_from_native(key),
+            self._encode_int(offset),
+            self._encode_int(int(value)),
+        )
 
     # Keys
 
     @_query_command
-    def keys(self, tr, pattern:NativeType) -> ListReply:
+    def keys(self, tr, pattern: NativeType) -> ListReply:
         """
         Find all keys matching the given pattern.
 
         .. note:: Also take a look at :func:`~asyncio_redis.RedisProtocol.scan`.
         """
-        return self._query(tr, b'keys', self.encode_from_native(pattern))
+        return self._query(tr, b"keys", self.encode_from_native(pattern))
 
-#    @_query_command
-#    def dump(self, key:NativeType):
-#        """ Return a serialized version of the value stored at the specified key. """
-#        # Dump does not work yet. It shouldn't be decoded using utf-8'
-#        raise NotImplementedError('Not supported.')
+    #    @_query_command
+    #    def dump(self, key:NativeType):
+    #        """ Return a serialized version of the value stored at the specified key. """
+    #        # Dump does not work yet. It shouldn't be decoded using utf-8'
+    #        raise NotImplementedError('Not supported.')
 
     @_query_command
-    def expire(self, tr, key:NativeType, seconds:int) -> int:
+    def expire(self, tr, key: NativeType, seconds: int) -> int:
         """ Set a key's time to live in seconds """
-        return self._query(tr, b'expire', self.encode_from_native(key), self._encode_int(seconds))
+        return self._query(
+            tr, b"expire", self.encode_from_native(key), self._encode_int(seconds)
+        )
 
     @_query_command
-    def pexpire(self, tr, key:NativeType, milliseconds:int) -> int:
+    def pexpire(self, tr, key: NativeType, milliseconds: int) -> int:
         """ Set a key's time to live in milliseconds """
-        return self._query(tr, b'pexpire', self.encode_from_native(key), self._encode_int(milliseconds))
+        return self._query(
+            tr, b"pexpire", self.encode_from_native(key), self._encode_int(milliseconds)
+        )
 
     @_query_command
-    def expireat(self, tr, key:NativeType, timestamp:int) -> int:
+    def expireat(self, tr, key: NativeType, timestamp: int) -> int:
         """ Set the expiration for a key as a UNIX timestamp """
-        return self._query(tr, b'expireat', self.encode_from_native(key), self._encode_int(timestamp))
+        return self._query(
+            tr, b"expireat", self.encode_from_native(key), self._encode_int(timestamp)
+        )
 
     @_query_command
-    def pexpireat(self, tr, key:NativeType, milliseconds_timestamp:int) -> int:
+    def pexpireat(self, tr, key: NativeType, milliseconds_timestamp: int) -> int:
         """ Set the expiration for a key as a UNIX timestamp specified in milliseconds """
-        return self._query(tr, b'pexpireat', self.encode_from_native(key), self._encode_int(milliseconds_timestamp))
+        return self._query(
+            tr,
+            b"pexpireat",
+            self.encode_from_native(key),
+            self._encode_int(milliseconds_timestamp),
+        )
 
     @_query_command
-    def persist(self, tr, key:NativeType) -> int:
+    def persist(self, tr, key: NativeType) -> int:
         """ Remove the expiration from a key """
-        return self._query(tr, b'persist', self.encode_from_native(key))
+        return self._query(tr, b"persist", self.encode_from_native(key))
 
     @_query_command
-    def ttl(self, tr, key:NativeType) -> int:
+    def ttl(self, tr, key: NativeType) -> int:
         """ Get the time to live for a key """
-        return self._query(tr, b'ttl', self.encode_from_native(key))
+        return self._query(tr, b"ttl", self.encode_from_native(key))
 
     @_query_command
-    def pttl(self, tr, key:NativeType) -> int:
+    def pttl(self, tr, key: NativeType) -> int:
         """ Get the time to live for a key in milliseconds """
-        return self._query(tr, b'pttl', self.encode_from_native(key))
+        return self._query(tr, b"pttl", self.encode_from_native(key))
 
     # Set operations
 
     @_query_command
-    def sadd(self, tr, key:NativeType, members:ListOf(NativeType)) -> int:
+    def sadd(self, tr, key: NativeType, members: ListOf(NativeType)) -> int:
         """ Add one or more members to a set """
-        return self._query(tr, b'sadd', self.encode_from_native(key), *map(self.encode_from_native, members))
+        return self._query(
+            tr,
+            b"sadd",
+            self.encode_from_native(key),
+            *map(self.encode_from_native, members),
+        )
 
     @_query_command
-    def srem(self, tr, key:NativeType, members:ListOf(NativeType)) -> int:
+    def srem(self, tr, key: NativeType, members: ListOf(NativeType)) -> int:
         """ Remove one or more members from a set """
-        return self._query(tr, b'srem', self.encode_from_native(key), *map(self.encode_from_native, members))
+        return self._query(
+            tr,
+            b"srem",
+            self.encode_from_native(key),
+            *map(self.encode_from_native, members),
+        )
 
     @_query_command
-    def spop(self, tr, key:NativeType) -> (NativeType, NoneType):
+    def spop(self, tr, key: NativeType) -> (NativeType, NoneType):
         """ Removes and returns a random element from the set value stored at key. """
-        return self._query(tr, b'spop', self.encode_from_native(key))
+        return self._query(tr, b"spop", self.encode_from_native(key))
 
     @_query_command
-    def srandmember(self, tr, key:NativeType, count:int=1) -> SetReply:
+    def srandmember(self, tr, key: NativeType, count: int = 1) -> SetReply:
         """ Get one or multiple random members from a set
         (Returns a list of members, even when count==1) """
-        return self._query(tr, b'srandmember', self.encode_from_native(key), self._encode_int(count))
+        return self._query(
+            tr, b"srandmember", self.encode_from_native(key), self._encode_int(count)
+        )
 
     @_query_command
-    def sismember(self, tr, key:NativeType, value:NativeType) -> bool:
+    def sismember(self, tr, key: NativeType, value: NativeType) -> bool:
         """ Determine if a given value is a member of a set """
-        return self._query(tr, b'sismember', self.encode_from_native(key), self.encode_from_native(value))
+        return self._query(
+            tr,
+            b"sismember",
+            self.encode_from_native(key),
+            self.encode_from_native(value),
+        )
 
     @_query_command
-    def scard(self, tr, key:NativeType) -> int:
+    def scard(self, tr, key: NativeType) -> int:
         """ Get the number of members in a set """
-        return self._query(tr, b'scard', self.encode_from_native(key))
+        return self._query(tr, b"scard", self.encode_from_native(key))
 
     @_query_command
-    def smembers(self, tr, key:NativeType) -> SetReply:
+    def smembers(self, tr, key: NativeType) -> SetReply:
         """ Get all the members in a set """
-        return self._query(tr, b'smembers', self.encode_from_native(key))
+        return self._query(tr, b"smembers", self.encode_from_native(key))
 
     @_query_command
-    def sinter(self, tr, keys:ListOf(NativeType)) -> SetReply:
+    def sinter(self, tr, keys: ListOf(NativeType)) -> SetReply:
         """ Intersect multiple sets """
-        return self._query(tr, b'sinter', *map(self.encode_from_native, keys))
+        return self._query(tr, b"sinter", *map(self.encode_from_native, keys))
 
     @_query_command
-    def sinterstore(self, tr, destination:NativeType, keys:ListOf(NativeType)) -> int:
+    def sinterstore(self, tr, destination: NativeType, keys: ListOf(NativeType)) -> int:
         """ Intersect multiple sets and store the resulting set in a key """
-        return self._query(tr, b'sinterstore', self.encode_from_native(destination), *map(self.encode_from_native, keys))
+        return self._query(
+            tr,
+            b"sinterstore",
+            self.encode_from_native(destination),
+            *map(self.encode_from_native, keys),
+        )
 
     @_query_command
-    def sdiff(self, tr, keys:ListOf(NativeType)) -> SetReply:
+    def sdiff(self, tr, keys: ListOf(NativeType)) -> SetReply:
         """ Subtract multiple sets """
-        return self._query(tr, b'sdiff', *map(self.encode_from_native, keys))
+        return self._query(tr, b"sdiff", *map(self.encode_from_native, keys))
 
     @_query_command
-    def sdiffstore(self, tr, destination:NativeType, keys:ListOf(NativeType)) -> int:
+    def sdiffstore(self, tr, destination: NativeType, keys: ListOf(NativeType)) -> int:
         """ Subtract multiple sets and store the resulting set in a key """
-        return self._query(tr, b'sdiffstore', self.encode_from_native(destination),
-                *map(self.encode_from_native, keys))
+        return self._query(
+            tr,
+            b"sdiffstore",
+            self.encode_from_native(destination),
+            *map(self.encode_from_native, keys),
+        )
 
     @_query_command
-    def sunion(self, tr, keys:ListOf(NativeType)) -> SetReply:
+    def sunion(self, tr, keys: ListOf(NativeType)) -> SetReply:
         """ Add multiple sets """
-        return self._query(tr, b'sunion', *map(self.encode_from_native, keys))
+        return self._query(tr, b"sunion", *map(self.encode_from_native, keys))
 
     @_query_command
-    def sunionstore(self, tr, destination:NativeType, keys:ListOf(NativeType)) -> int:
+    def sunionstore(self, tr, destination: NativeType, keys: ListOf(NativeType)) -> int:
         """ Add multiple sets and store the resulting set in a key """
-        return self._query(tr, b'sunionstore', self.encode_from_native(destination), *map(self.encode_from_native, keys))
+        return self._query(
+            tr,
+            b"sunionstore",
+            self.encode_from_native(destination),
+            *map(self.encode_from_native, keys),
+        )
 
     @_query_command
-    def smove(self, tr, source:NativeType, destination:NativeType, value:NativeType) -> int:
+    def smove(
+        self, tr, source: NativeType, destination: NativeType, value: NativeType
+    ) -> int:
         """ Move a member from one set to another """
-        return self._query(tr, b'smove', self.encode_from_native(source), self.encode_from_native(destination), self.encode_from_native(value))
+        return self._query(
+            tr,
+            b"smove",
+            self.encode_from_native(source),
+            self.encode_from_native(destination),
+            self.encode_from_native(value),
+        )
 
     # List operations
 
     @_query_command
-    def lpush(self, tr, key:NativeType, values:ListOf(NativeType)) -> int:
+    def lpush(self, tr, key: NativeType, values: ListOf(NativeType)) -> int:
         """ Prepend one or multiple values to a list """
-        return self._query(tr, b'lpush', self.encode_from_native(key), *map(self.encode_from_native, values))
+        return self._query(
+            tr,
+            b"lpush",
+            self.encode_from_native(key),
+            *map(self.encode_from_native, values),
+        )
 
     @_query_command
-    def lpushx(self, tr, key:NativeType, value:NativeType) -> int:
+    def lpushx(self, tr, key: NativeType, value: NativeType) -> int:
         """ Prepend a value to a list, only if the list exists """
-        return self._query(tr, b'lpushx', self.encode_from_native(key), self.encode_from_native(value))
+        return self._query(
+            tr, b"lpushx", self.encode_from_native(key), self.encode_from_native(value)
+        )
 
     @_query_command
-    def rpush(self, tr, key:NativeType, values:ListOf(NativeType)) -> int:
+    def rpush(self, tr, key: NativeType, values: ListOf(NativeType)) -> int:
         """ Append one or multiple values to a list """
-        return self._query(tr, b'rpush', self.encode_from_native(key), *map(self.encode_from_native, values))
+        return self._query(
+            tr,
+            b"rpush",
+            self.encode_from_native(key),
+            *map(self.encode_from_native, values),
+        )
 
     @_query_command
-    def rpushx(self, tr, key:NativeType, value:NativeType) -> int:
+    def rpushx(self, tr, key: NativeType, value: NativeType) -> int:
         """ Append a value to a list, only if the list exists """
-        return self._query(tr, b'rpushx', self.encode_from_native(key), self.encode_from_native(value))
+        return self._query(
+            tr, b"rpushx", self.encode_from_native(key), self.encode_from_native(value)
+        )
 
     @_query_command
-    def llen(self, tr, key:NativeType) -> int:
+    def llen(self, tr, key: NativeType) -> int:
         """ Returns the length of the list stored at key. """
-        return self._query(tr, b'llen', self.encode_from_native(key))
+        return self._query(tr, b"llen", self.encode_from_native(key))
 
     @_query_command
-    def lrem(self, tr, key:NativeType, count:int=0, value='') -> int:
+    def lrem(self, tr, key: NativeType, count: int = 0, value="") -> int:
         """ Remove elements from a list """
-        return self._query(tr, b'lrem', self.encode_from_native(key), self._encode_int(count), self.encode_from_native(value))
+        return self._query(
+            tr,
+            b"lrem",
+            self.encode_from_native(key),
+            self._encode_int(count),
+            self.encode_from_native(value),
+        )
 
     @_query_command
-    def lrange(self, tr, key, start:int=0, stop:int=-1) -> ListReply:
+    def lrange(self, tr, key, start: int = 0, stop: int = -1) -> ListReply:
         """ Get a range of elements from a list. """
-        return self._query(tr, b'lrange', self.encode_from_native(key), self._encode_int(start), self._encode_int(stop))
+        return self._query(
+            tr,
+            b"lrange",
+            self.encode_from_native(key),
+            self._encode_int(start),
+            self._encode_int(stop),
+        )
 
     @_query_command
-    def ltrim(self, tr, key:NativeType, start:int=0, stop:int=-1) -> StatusReply:
+    def ltrim(self, tr, key: NativeType, start: int = 0, stop: int = -1) -> StatusReply:
         """ Trim a list to the specified range """
-        return self._query(tr, b'ltrim', self.encode_from_native(key), self._encode_int(start), self._encode_int(stop))
+        return self._query(
+            tr,
+            b"ltrim",
+            self.encode_from_native(key),
+            self._encode_int(start),
+            self._encode_int(stop),
+        )
 
     @_query_command
-    def lpop(self, tr, key:NativeType) -> (NativeType, NoneType):
+    def lpop(self, tr, key: NativeType) -> (NativeType, NoneType):
         """ Remove and get the first element in a list """
-        return self._query(tr, b'lpop', self.encode_from_native(key))
+        return self._query(tr, b"lpop", self.encode_from_native(key))
 
     @_query_command
-    def rpop(self, tr, key:NativeType) -> (NativeType, NoneType):
+    def rpop(self, tr, key: NativeType) -> (NativeType, NoneType):
         """ Remove and get the last element in a list """
-        return self._query(tr, b'rpop', self.encode_from_native(key))
+        return self._query(tr, b"rpop", self.encode_from_native(key))
 
     @_query_command
-    def rpoplpush(self, tr, source:NativeType, destination:NativeType) -> (NativeType, NoneType):
+    def rpoplpush(
+        self, tr, source: NativeType, destination: NativeType
+    ) -> (NativeType, NoneType):
         """ Remove the last element in a list, append it to another list and return it """
-        return self._query(tr, b'rpoplpush', self.encode_from_native(source), self.encode_from_native(destination))
+        return self._query(
+            tr,
+            b"rpoplpush",
+            self.encode_from_native(source),
+            self.encode_from_native(destination),
+        )
 
     @_query_command
-    def lindex(self, tr, key:NativeType, index:int) -> (NativeType, NoneType):
+    def lindex(self, tr, key: NativeType, index: int) -> (NativeType, NoneType):
         """ Get an element from a list by its index """
-        return self._query(tr, b'lindex', self.encode_from_native(key), self._encode_int(index))
+        return self._query(
+            tr, b"lindex", self.encode_from_native(key), self._encode_int(index)
+        )
 
     @_query_command
-    def blpop(self, tr, keys:ListOf(NativeType), timeout:int=0) -> BlockingPopReply:
+    def blpop(self, tr, keys: ListOf(NativeType), timeout: int = 0) -> BlockingPopReply:
         """ Remove and get the first element in a list, or block until one is available.
         This will raise :class:`~asyncio_redis.TimeoutError` when
         the timeout was exceeded and Redis returns `None`. """
-        return self._blocking_pop(tr, b'blpop', keys, timeout=timeout)
+        return self._blocking_pop(tr, b"blpop", keys, timeout=timeout)
 
     @_query_command
-    def brpop(self, tr, keys:ListOf(NativeType), timeout:int=0) -> BlockingPopReply:
+    def brpop(self, tr, keys: ListOf(NativeType), timeout: int = 0) -> BlockingPopReply:
         """ Remove and get the last element in a list, or block until one is available.
         This will raise :class:`~asyncio_redis.TimeoutError` when
         the timeout was exceeded and Redis returns `None`. """
-        return self._blocking_pop(tr, b'brpop', keys, timeout=timeout)
+        return self._blocking_pop(tr, b"brpop", keys, timeout=timeout)
 
-    def _blocking_pop(self, tr, command, keys, timeout:int=0):
-        return self._query(tr, command, *([ self.encode_from_native(k) for k in keys ] + [self._encode_int(timeout)]), set_blocking=True)
+    def _blocking_pop(self, tr, command, keys, timeout: int = 0):
+        return self._query(
+            tr,
+            command,
+            *([self.encode_from_native(k) for k in keys] + [self._encode_int(timeout)]),
+            set_blocking=True,
+        )
 
     @_command
-    async def brpoplpush(self, tr, source:NativeType, destination:NativeType, timeout:int=0) -> NativeType:
+    async def brpoplpush(
+        self, tr, source: NativeType, destination: NativeType, timeout: int = 0
+    ) -> NativeType:
         """ Pop a value from a list, push it to another list and return it; or block until one is available """
-        result = await self._query(tr, b'brpoplpush', self.encode_from_native(source), self.encode_from_native(destination),
-                    self._encode_int(timeout), set_blocking=True)
+        result = await self._query(
+            tr,
+            b"brpoplpush",
+            self.encode_from_native(source),
+            self.encode_from_native(destination),
+            self._encode_int(timeout),
+            set_blocking=True,
+        )
 
         if result is None:
-            raise TimeoutError('Timeout in brpoplpush')
+            raise TimeoutError("Timeout in brpoplpush")
         else:
             assert isinstance(result, bytes)
             return self.decode_to_native(result)
 
     @_query_command
-    def lset(self, tr, key:NativeType, index:int, value:NativeType) -> StatusReply:
+    def lset(self, tr, key: NativeType, index: int, value: NativeType) -> StatusReply:
         """ Set the value of an element in a list by its index. """
-        return self._query(tr, b'lset', self.encode_from_native(key), self._encode_int(index), self.encode_from_native(value))
+        return self._query(
+            tr,
+            b"lset",
+            self.encode_from_native(key),
+            self._encode_int(index),
+            self.encode_from_native(value),
+        )
 
     @_query_command
-    def linsert(self, tr, key:NativeType, pivot:NativeType, value:NativeType, before=False) -> int:
+    def linsert(
+        self, tr, key: NativeType, pivot: NativeType, value: NativeType, before=False
+    ) -> int:
         """ Insert an element before or after another element in a list """
-        return self._query(tr, b'linsert', self.encode_from_native(key), (b'BEFORE' if before else b'AFTER'),
-                self.encode_from_native(pivot), self.encode_from_native(value))
+        return self._query(
+            tr,
+            b"linsert",
+            self.encode_from_native(key),
+            (b"BEFORE" if before else b"AFTER"),
+            self.encode_from_native(pivot),
+            self.encode_from_native(value),
+        )
 
     # Sorted Sets
 
     @_query_command
-    def zadd(self, tr, key:NativeType, values:dict, only_if_not_exists=False, only_if_exists=False, return_num_changed=False) -> int:
+    def zadd(
+        self,
+        tr,
+        key: NativeType,
+        values: dict,
+        only_if_not_exists=False,
+        only_if_exists=False,
+        return_num_changed=False,
+    ) -> int:
         """
         Add one or more members to a sorted set, or update its score if it already exists
 
@@ -1507,29 +1763,29 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             yield protocol.zadd('myzset', { 'key': 4, 'key2': 5 })
         """
 
-        options = [ ]
+        options = []
 
         assert not (only_if_not_exists and only_if_exists)
         if only_if_not_exists:
-            options.append(b'NX')
+            options.append(b"NX")
         elif only_if_exists:
-            options.append(b'XX')
+            options.append(b"XX")
 
         if return_num_changed:
-            options.append(b'CH')
+            options.append(b"CH")
 
-        data = [ ]
-        for k,score in values.items():
+        data = []
+        for k, score in values.items():
             assert isinstance(k, self.native_type)
             assert isinstance(score, (int, float))
 
             data.append(self._encode_float(score))
             data.append(self.encode_from_native(k))
 
-        return self._query(tr, b'zadd', self.encode_from_native(key), *(options + data))
+        return self._query(tr, b"zadd", self.encode_from_native(key), *(options + data))
 
     @_query_command
-    def zpopmin(self, tr, key:NativeType, count:int=1) -> ZRangeReply:
+    def zpopmin(self, tr, key: NativeType, count: int = 1) -> ZRangeReply:
         """
         Return the specified numbers of first elements from sorted set with a minimum score
 
@@ -1540,10 +1796,14 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             result = yield protocol.zpopmin('myzset', count=10)
             my_dict = yield result.asdict()
         """
-        return self._query(tr, b'zpopmin', self.encode_from_native(key), self._encode_int(count))
+        return self._query(
+            tr, b"zpopmin", self.encode_from_native(key), self._encode_int(count)
+        )
 
     @_query_command
-    def zrange(self, tr, key:NativeType, start:int=0, stop:int=-1) -> ZRangeReply:
+    def zrange(
+        self, tr, key: NativeType, start: int = 0, stop: int = -1
+    ) -> ZRangeReply:
         """
         Return a range of members in a sorted set, by index.
 
@@ -1562,11 +1822,17 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             result = yield protocol.zrange('myzset', start=10, stop=20)
             my_dict = yield result.aslist()
         """
-        return self._query(tr, b'zrange', self.encode_from_native(key),
-                    self._encode_int(start), self._encode_int(stop), b'withscores')
+        return self._query(
+            tr,
+            b"zrange",
+            self.encode_from_native(key),
+            self._encode_int(start),
+            self._encode_int(stop),
+            b"withscores",
+        )
 
     @_query_command
-    def zrangebylex(self, tr, key:NativeType, start:str, stop:str) -> SetReply:
+    def zrangebylex(self, tr, key: NativeType, start: str, stop: str) -> SetReply:
         """
         Return a range of members in a sorted set, by index.
 
@@ -1585,11 +1851,18 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             result = yield protocol.zrangebylex('myzset', start='-', stop='[c')
             my_dict = yield result.aslist()
         """
-        return self._query(tr, b'zrangebylex', self.encode_from_native(key),
-                    self.encode_from_native(start), self.encode_from_native(stop))
+        return self._query(
+            tr,
+            b"zrangebylex",
+            self.encode_from_native(key),
+            self.encode_from_native(start),
+            self.encode_from_native(stop),
+        )
 
     @_query_command
-    def zrevrange(self, tr, key:NativeType, start:int=0, stop:int=-1) -> ZRangeReply:
+    def zrevrange(
+        self, tr, key: NativeType, start: int = 0, stop: int = -1
+    ) -> ZRangeReply:
         """
         Return a range of members in a reversed sorted set, by index.
 
@@ -1608,67 +1881,132 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             my_dict = yield zrange_reply.aslist()
 
         """
-        return self._query(tr, b'zrevrange', self.encode_from_native(key),
-                    self._encode_int(start), self._encode_int(stop), b'withscores')
+        return self._query(
+            tr,
+            b"zrevrange",
+            self.encode_from_native(key),
+            self._encode_int(start),
+            self._encode_int(stop),
+            b"withscores",
+        )
 
     @_query_command
-    def zrangebyscore(self, tr, key:NativeType,
-                min:ZScoreBoundary=ZScoreBoundary.MIN_VALUE,
-                max:ZScoreBoundary=ZScoreBoundary.MAX_VALUE,
-                offset:int=0, limit:int=-1) -> ZRangeReply:
+    def zrangebyscore(
+        self,
+        tr,
+        key: NativeType,
+        min: ZScoreBoundary = ZScoreBoundary.MIN_VALUE,
+        max: ZScoreBoundary = ZScoreBoundary.MAX_VALUE,
+        offset: int = 0,
+        limit: int = -1,
+    ) -> ZRangeReply:
         """ Return a range of members in a sorted set, by score """
-        return self._query(tr, b'zrangebyscore', self.encode_from_native(key),
-                    self._encode_zscore_boundary(min), self._encode_zscore_boundary(max),
-                    b'limit', self._encode_int(offset), self._encode_int(limit),
-                    b'withscores')
+        return self._query(
+            tr,
+            b"zrangebyscore",
+            self.encode_from_native(key),
+            self._encode_zscore_boundary(min),
+            self._encode_zscore_boundary(max),
+            b"limit",
+            self._encode_int(offset),
+            self._encode_int(limit),
+            b"withscores",
+        )
 
     @_query_command
-    def zrevrangebyscore(self, tr, key:NativeType,
-                max:ZScoreBoundary=ZScoreBoundary.MAX_VALUE,
-                min:ZScoreBoundary=ZScoreBoundary.MIN_VALUE,
-                offset:int=0, limit:int=-1) -> ZRangeReply:
+    def zrevrangebyscore(
+        self,
+        tr,
+        key: NativeType,
+        max: ZScoreBoundary = ZScoreBoundary.MAX_VALUE,
+        min: ZScoreBoundary = ZScoreBoundary.MIN_VALUE,
+        offset: int = 0,
+        limit: int = -1,
+    ) -> ZRangeReply:
         """ Return a range of members in a sorted set, by score, with scores ordered from high to low """
-        return self._query(tr, b'zrevrangebyscore', self.encode_from_native(key),
-                    self._encode_zscore_boundary(max), self._encode_zscore_boundary(min),
-                    b'limit', self._encode_int(offset), self._encode_int(limit),
-                    b'withscores')
+        return self._query(
+            tr,
+            b"zrevrangebyscore",
+            self.encode_from_native(key),
+            self._encode_zscore_boundary(max),
+            self._encode_zscore_boundary(min),
+            b"limit",
+            self._encode_int(offset),
+            self._encode_int(limit),
+            b"withscores",
+        )
 
     @_query_command
-    def zremrangebyscore(self, tr, key:NativeType,
-                min:ZScoreBoundary=ZScoreBoundary.MIN_VALUE,
-                max:ZScoreBoundary=ZScoreBoundary.MAX_VALUE) -> int:
+    def zremrangebyscore(
+        self,
+        tr,
+        key: NativeType,
+        min: ZScoreBoundary = ZScoreBoundary.MIN_VALUE,
+        max: ZScoreBoundary = ZScoreBoundary.MAX_VALUE,
+    ) -> int:
         """ Remove all members in a sorted set within the given scores """
-        return self._query(tr, b'zremrangebyscore', self.encode_from_native(key),
-                    self._encode_zscore_boundary(min), self._encode_zscore_boundary(max))
+        return self._query(
+            tr,
+            b"zremrangebyscore",
+            self.encode_from_native(key),
+            self._encode_zscore_boundary(min),
+            self._encode_zscore_boundary(max),
+        )
 
     @_query_command
-    def zremrangebyrank(self, tr, key:NativeType, min:int=0, max:int=-1) -> int:
+    def zremrangebyrank(self, tr, key: NativeType, min: int = 0, max: int = -1) -> int:
         """ Remove all members in a sorted set within the given indexes """
-        return self._query(tr, b'zremrangebyrank', self.encode_from_native(key),
-                    self._encode_int(min), self._encode_int(max))
+        return self._query(
+            tr,
+            b"zremrangebyrank",
+            self.encode_from_native(key),
+            self._encode_int(min),
+            self._encode_int(max),
+        )
 
     @_query_command
-    def zcount(self, tr, key:NativeType, min:ZScoreBoundary, max:ZScoreBoundary) -> int:
+    def zcount(
+        self, tr, key: NativeType, min: ZScoreBoundary, max: ZScoreBoundary
+    ) -> int:
         """ Count the members in a sorted set with scores within the given values """
-        return self._query(tr, b'zcount', self.encode_from_native(key),
-                    self._encode_zscore_boundary(min), self._encode_zscore_boundary(max))
+        return self._query(
+            tr,
+            b"zcount",
+            self.encode_from_native(key),
+            self._encode_zscore_boundary(min),
+            self._encode_zscore_boundary(max),
+        )
 
     @_query_command
-    def zscore(self, tr, key:NativeType, member:NativeType) -> (float, NoneType):
+    def zscore(self, tr, key: NativeType, member: NativeType) -> (float, NoneType):
         """ Get the score associated with the given member in a sorted set """
-        return self._query(tr, b'zscore', self.encode_from_native(key), self.encode_from_native(member))
+        return self._query(
+            tr, b"zscore", self.encode_from_native(key), self.encode_from_native(member)
+        )
 
     @_query_command
-    def zunionstore(self, tr, destination:NativeType, keys:ListOf(NativeType), weights:(NoneType,ListOf(float))=None,
-                                    aggregate=ZAggregate.SUM) -> int:
+    def zunionstore(
+        self,
+        tr,
+        destination: NativeType,
+        keys: ListOf(NativeType),
+        weights: (NoneType, ListOf(float)) = None,
+        aggregate=ZAggregate.SUM,
+    ) -> int:
         """ Add multiple sorted sets and store the resulting sorted set in a new key """
-        return self._zstore(tr, b'zunionstore', destination, keys, weights, aggregate)
+        return self._zstore(tr, b"zunionstore", destination, keys, weights, aggregate)
 
     @_query_command
-    def zinterstore(self, tr, destination:NativeType, keys:ListOf(NativeType), weights:(NoneType,ListOf(float))=None,
-                                    aggregate=ZAggregate.SUM) -> int:
+    def zinterstore(
+        self,
+        tr,
+        destination: NativeType,
+        keys: ListOf(NativeType),
+        weights: (NoneType, ListOf(float)) = None,
+        aggregate=ZAggregate.SUM,
+    ) -> int:
         """ Intersect multiple sorted sets and store the resulting sorted set in a new key """
-        return self._zstore(tr, b'zinterstore', destination, keys, weights, aggregate)
+        return self._zstore(tr, b"zinterstore", destination, keys, weights, aggregate)
 
     def _zstore(self, tr, command, destination, keys, weights, aggregate):
         """ Common part for zunionstore and zinterstore. """
@@ -1676,132 +2014,207 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         if weights is None:
             weights = [1] * numkeys
 
-        return self._query(tr, *
-                [ command, self.encode_from_native(destination), self._encode_int(numkeys) ] +
-                list(map(self.encode_from_native, keys)) +
-                [ b'weights' ] +
-                list(map(self._encode_float, weights)) +
-                [ b'aggregate' ] +
-                [ {
-                        ZAggregate.SUM: b'SUM',
-                        ZAggregate.MIN: b'MIN',
-                        ZAggregate.MAX: b'MAX' }[aggregate]
-                ] )
+        return self._query(
+            tr,
+            *[command, self.encode_from_native(destination), self._encode_int(numkeys)]
+            + list(map(self.encode_from_native, keys))
+            + [b"weights"]
+            + list(map(self._encode_float, weights))
+            + [b"aggregate"]
+            + [
+                {
+                    ZAggregate.SUM: b"SUM",
+                    ZAggregate.MIN: b"MIN",
+                    ZAggregate.MAX: b"MAX",
+                }[aggregate]
+            ],
+        )
 
     @_query_command
-    def zcard(self, tr, key:NativeType) -> int:
+    def zcard(self, tr, key: NativeType) -> int:
         """ Get the number of members in a sorted set """
-        return self._query(tr, b'zcard', self.encode_from_native(key))
+        return self._query(tr, b"zcard", self.encode_from_native(key))
 
     @_query_command
-    def zrank(self, tr, key:NativeType, member:NativeType) -> (int, NoneType):
+    def zrank(self, tr, key: NativeType, member: NativeType) -> (int, NoneType):
         """ Determine the index of a member in a sorted set """
-        return self._query(tr, b'zrank', self.encode_from_native(key), self.encode_from_native(member))
+        return self._query(
+            tr, b"zrank", self.encode_from_native(key), self.encode_from_native(member)
+        )
 
     @_query_command
-    def zrevrank(self, tr, key:NativeType, member:NativeType) -> (int, NoneType):
+    def zrevrank(self, tr, key: NativeType, member: NativeType) -> (int, NoneType):
         """ Determine the index of a member in a sorted set, with scores ordered from high to low """
-        return self._query(tr, b'zrevrank', self.encode_from_native(key), self.encode_from_native(member))
+        return self._query(
+            tr,
+            b"zrevrank",
+            self.encode_from_native(key),
+            self.encode_from_native(member),
+        )
 
     @_query_command
-    def zincrby(self, tr, key:NativeType, increment:float, member:NativeType, only_if_exists=False) -> (float, NoneType):
+    def zincrby(
+        self,
+        tr,
+        key: NativeType,
+        increment: float,
+        member: NativeType,
+        only_if_exists=False,
+    ) -> (float, NoneType):
         """ Increment the score of a member in a sorted set """
 
         if only_if_exists:
-            return self._query(tr, b'zadd', self.encode_from_native(key), b'xx', b'incr',
-                    self._encode_float(increment), self.encode_from_native(member))
+            return self._query(
+                tr,
+                b"zadd",
+                self.encode_from_native(key),
+                b"xx",
+                b"incr",
+                self._encode_float(increment),
+                self.encode_from_native(member),
+            )
         else:
-            return self._query(tr, b'zincrby', self.encode_from_native(key),
-                    self._encode_float(increment), self.encode_from_native(member))
+            return self._query(
+                tr,
+                b"zincrby",
+                self.encode_from_native(key),
+                self._encode_float(increment),
+                self.encode_from_native(member),
+            )
 
     @_query_command
-    def zrem(self, tr, key:NativeType, members:ListOf(NativeType)) -> int:
+    def zrem(self, tr, key: NativeType, members: ListOf(NativeType)) -> int:
         """ Remove one or more members from a sorted set """
-        return self._query(tr, b'zrem', self.encode_from_native(key), *map(self.encode_from_native, members))
+        return self._query(
+            tr,
+            b"zrem",
+            self.encode_from_native(key),
+            *map(self.encode_from_native, members),
+        )
 
     # Hashes
 
     @_query_command
-    def hset(self, tr, key:NativeType, field:NativeType, value:NativeType) -> int:
+    def hset(self, tr, key: NativeType, field: NativeType, value: NativeType) -> int:
         """ Set the string value of a hash field """
-        return self._query(tr, b'hset', self.encode_from_native(key), self.encode_from_native(field), self.encode_from_native(value))
+        return self._query(
+            tr,
+            b"hset",
+            self.encode_from_native(key),
+            self.encode_from_native(field),
+            self.encode_from_native(value),
+        )
 
     @_query_command
-    def hmset(self, tr, key:NativeType, values:dict) -> StatusReply:
+    def hmset(self, tr, key: NativeType, values: dict) -> StatusReply:
         """ Set multiple hash fields to multiple values """
-        data = [ ]
-        for k,v in values.items():
+        data = []
+        for k, v in values.items():
             assert isinstance(k, self.native_type)
             assert isinstance(v, self.native_type)
 
             data.append(self.encode_from_native(k))
             data.append(self.encode_from_native(v))
 
-        return self._query(tr, b'hmset', self.encode_from_native(key), *data)
+        return self._query(tr, b"hmset", self.encode_from_native(key), *data)
 
     @_query_command
-    def hsetnx(self, tr, key:NativeType, field:NativeType, value:NativeType) -> int:
+    def hsetnx(self, tr, key: NativeType, field: NativeType, value: NativeType) -> int:
         """ Set the value of a hash field, only if the field does not exist """
-        return self._query(tr, b'hsetnx', self.encode_from_native(key), self.encode_from_native(field), self.encode_from_native(value))
+        return self._query(
+            tr,
+            b"hsetnx",
+            self.encode_from_native(key),
+            self.encode_from_native(field),
+            self.encode_from_native(value),
+        )
 
     @_query_command
-    def hdel(self, tr, key:NativeType, fields:ListOf(NativeType)) -> int:
+    def hdel(self, tr, key: NativeType, fields: ListOf(NativeType)) -> int:
         """ Delete one or more hash fields """
-        return self._query(tr, b'hdel', self.encode_from_native(key), *map(self.encode_from_native, fields))
+        return self._query(
+            tr,
+            b"hdel",
+            self.encode_from_native(key),
+            *map(self.encode_from_native, fields),
+        )
 
     @_query_command
-    def hget(self, tr, key:NativeType, field:NativeType) -> (NativeType, NoneType):
+    def hget(self, tr, key: NativeType, field: NativeType) -> (NativeType, NoneType):
         """ Get the value of a hash field """
-        return self._query(tr, b'hget', self.encode_from_native(key), self.encode_from_native(field))
+        return self._query(
+            tr, b"hget", self.encode_from_native(key), self.encode_from_native(field)
+        )
 
     @_query_command
-    def hexists(self, tr, key:NativeType, field:NativeType) -> bool:
+    def hexists(self, tr, key: NativeType, field: NativeType) -> bool:
         """ Returns if field is an existing field in the hash stored at key. """
-        return self._query(tr, b'hexists', self.encode_from_native(key), self.encode_from_native(field))
+        return self._query(
+            tr, b"hexists", self.encode_from_native(key), self.encode_from_native(field)
+        )
 
     @_query_command
-    def hkeys(self, tr, key:NativeType) -> SetReply:
+    def hkeys(self, tr, key: NativeType) -> SetReply:
         """ Get all the keys in a hash. (Returns a set) """
-        return self._query(tr, b'hkeys', self.encode_from_native(key))
+        return self._query(tr, b"hkeys", self.encode_from_native(key))
 
     @_query_command
-    def hvals(self, tr, key:NativeType) -> ListReply:
+    def hvals(self, tr, key: NativeType) -> ListReply:
         """ Get all the values in a hash. (Returns a list) """
-        return self._query(tr, b'hvals', self.encode_from_native(key))
+        return self._query(tr, b"hvals", self.encode_from_native(key))
 
     @_query_command
-    def hlen(self, tr, key:NativeType) -> int:
+    def hlen(self, tr, key: NativeType) -> int:
         """ Returns the number of fields contained in the hash stored at key. """
-        return self._query(tr, b'hlen', self.encode_from_native(key))
+        return self._query(tr, b"hlen", self.encode_from_native(key))
 
     @_query_command
-    def hgetall(self, tr, key:NativeType) -> DictReply:
+    def hgetall(self, tr, key: NativeType) -> DictReply:
         """ Get the value of a hash field """
-        return self._query(tr, b'hgetall', self.encode_from_native(key))
+        return self._query(tr, b"hgetall", self.encode_from_native(key))
 
     @_query_command
-    def hmget(self, tr, key:NativeType, fields:ListOf(NativeType)) -> ListReply:
+    def hmget(self, tr, key: NativeType, fields: ListOf(NativeType)) -> ListReply:
         """ Get the values of all the given hash fields """
-        return self._query(tr, b'hmget', self.encode_from_native(key), *map(self.encode_from_native, fields))
+        return self._query(
+            tr,
+            b"hmget",
+            self.encode_from_native(key),
+            *map(self.encode_from_native, fields),
+        )
 
     @_query_command
-    def hincrby(self, tr, key:NativeType, field:NativeType, increment) -> int:
+    def hincrby(self, tr, key: NativeType, field: NativeType, increment) -> int:
         """ Increment the integer value of a hash field by the given number
         Returns: the value at field after the increment operation. """
         assert isinstance(increment, int)
-        return self._query(tr, b'hincrby', self.encode_from_native(key), self.encode_from_native(field), self._encode_int(increment))
+        return self._query(
+            tr,
+            b"hincrby",
+            self.encode_from_native(key),
+            self.encode_from_native(field),
+            self._encode_int(increment),
+        )
 
     @_query_command
-    def hincrbyfloat(self, tr, key:NativeType, field:NativeType, increment:(int,float)) -> float:
+    def hincrbyfloat(
+        self, tr, key: NativeType, field: NativeType, increment: (int, float)
+    ) -> float:
         """ Increment the float value of a hash field by the given amount
         Returns: the value at field after the increment operation. """
-        return self._query(tr, b'hincrbyfloat', self.encode_from_native(key), self.encode_from_native(field), self._encode_float(increment))
+        return self._query(
+            tr,
+            b"hincrbyfloat",
+            self.encode_from_native(key),
+            self.encode_from_native(field),
+            self._encode_float(increment),
+        )
 
     # Pubsub
     # (subscribe, unsubscribe, etc... should be called through the Subscription class.)
 
     @_command
-    async def start_subscribe(self, tr, *a) -> 'Subscription':
+    async def start_subscribe(self, tr, *a) -> "Subscription":
         """
         Start a pubsub listener.
 
@@ -1819,7 +2232,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         :returns: :class:`~asyncio_redis.Subscription`
         """
         if self.in_use:
-            raise Error('Cannot start pubsub listener when a protocol is in use.')
+            raise Error("Cannot start pubsub listener when a protocol is in use.")
 
         subscription = Subscription(self)
 
@@ -1828,35 +2241,39 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return subscription
 
     @_command
-    def _subscribe(self, tr, channels:ListOf(NativeType)) -> NoneType:
+    def _subscribe(self, tr, channels: ListOf(NativeType)) -> NoneType:
         """ Listen for messages published to the given channels """
         self._pubsub_channels |= set(channels)
-        return self._pubsub_method('subscribe', channels)
+        return self._pubsub_method("subscribe", channels)
 
     @_command
-    def _unsubscribe(self, tr, channels:ListOf(NativeType)) -> NoneType:
+    def _unsubscribe(self, tr, channels: ListOf(NativeType)) -> NoneType:
         """ Stop listening for messages posted to the given channels """
         self._pubsub_channels -= set(channels)
-        return self._pubsub_method('unsubscribe', channels)
+        return self._pubsub_method("unsubscribe", channels)
 
     @_command
-    def _psubscribe(self, tr, patterns:ListOf(NativeType)) -> NoneType:
+    def _psubscribe(self, tr, patterns: ListOf(NativeType)) -> NoneType:
         """ Listen for messages published to channels matching the given patterns """
         self._pubsub_patterns |= set(patterns)
-        return self._pubsub_method('psubscribe', patterns)
+        return self._pubsub_method("psubscribe", patterns)
 
     @_command
-    def _punsubscribe(self, tr, patterns:ListOf(NativeType)) -> NoneType: # XXX: unittest
+    def _punsubscribe(
+        self, tr, patterns: ListOf(NativeType)
+    ) -> NoneType:  # XXX: unittest
         """ Stop listening for messages posted to channels matching the given patterns """
         self._pubsub_patterns -= set(patterns)
-        return self._pubsub_method('punsubscribe', patterns)
+        return self._pubsub_method("punsubscribe", patterns)
 
     async def _pubsub_method(self, method, params):
         if not self._in_pubsub:
-            raise Error('Cannot call pubsub methods without calling start_subscribe')
+            raise Error("Cannot call pubsub methods without calling start_subscribe")
 
         # Send
-        self._send_command([method.encode('ascii')] + list(map(self.encode_from_native, params)))
+        self._send_command(
+            [method.encode("ascii")] + list(map(self.encode_from_native, params))
+        )
 
         # Note that we can't use `self._query` here. The reason is that one
         # subscribe/unsubscribe command returns a separate answer for every
@@ -1867,26 +2284,37 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         # each parameter, but we can safely ignore those replies that.
 
     @_query_command
-    def publish(self, tr, channel:NativeType, message:NativeType) -> int:
+    def publish(self, tr, channel: NativeType, message: NativeType) -> int:
         """ Post a message to a channel
         (Returns the number of clients that received this message.) """
-        return self._query(tr, b'publish', self.encode_from_native(channel), self.encode_from_native(message))
+        return self._query(
+            tr,
+            b"publish",
+            self.encode_from_native(channel),
+            self.encode_from_native(message),
+        )
 
     @_query_command
-    def pubsub_channels(self, tr, pattern:(NativeType, NoneType)=None) -> ListReply:
+    def pubsub_channels(self, tr, pattern: (NativeType, NoneType) = None) -> ListReply:
         """
         Lists the currently active channels. An active channel is a Pub/Sub
         channel with one ore more subscribers (not including clients subscribed
         to patterns).
         """
-        return self._query(tr, b'pubsub', b'channels',
-                    (self.encode_from_native(pattern) if pattern else b'*'))
+        return self._query(
+            tr,
+            b"pubsub",
+            b"channels",
+            (self.encode_from_native(pattern) if pattern else b"*"),
+        )
 
     @_query_command
-    def pubsub_numsub(self, tr, channels:ListOf(NativeType)) -> DictReply:
+    def pubsub_numsub(self, tr, channels: ListOf(NativeType)) -> DictReply:
         """Returns the number of subscribers (not counting clients subscribed
         to patterns) for the specified channels.  """
-        return self._query(tr, b'pubsub', b'numsub', *[ self.encode_from_native(c) for c in channels ])
+        return self._query(
+            tr, b"pubsub", b"numsub", *[self.encode_from_native(c) for c in channels]
+        )
 
     @_query_command
     def pubsub_numpat(self, tr) -> int:
@@ -1894,121 +2322,126 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         using the PSUBSCRIBE command). Note that this is not just the count of
         clients subscribed to patterns but the total number of patterns all the
         clients are subscribed to. """
-        return self._query(tr, b'pubsub', b'numpat')
+        return self._query(tr, b"pubsub", b"numpat")
 
     # Server
 
     @_query_command
     def ping(self, tr) -> StatusReply:
         """ Ping the server (Returns PONG) """
-        return self._query(tr, b'ping')
+        return self._query(tr, b"ping")
 
     @_query_command
-    def echo(self, tr, string:NativeType) -> NativeType:
+    def echo(self, tr, string: NativeType) -> NativeType:
         """ Echo the given string """
-        return self._query(tr, b'echo', self.encode_from_native(string))
+        return self._query(tr, b"echo", self.encode_from_native(string))
 
     @_query_command
     def save(self, tr) -> StatusReply:
         """ Synchronously save the dataset to disk """
-        return self._query(tr, b'save')
+        return self._query(tr, b"save")
 
     @_query_command
     def bgsave(self, tr) -> StatusReply:
         """ Asynchronously save the dataset to disk """
-        return self._query(tr, b'bgsave')
+        return self._query(tr, b"bgsave")
 
     @_query_command
     def bgrewriteaof(self, tr) -> StatusReply:
         """ Asynchronously rewrite the append-only file """
-        return self._query(tr, b'bgrewriteaof')
+        return self._query(tr, b"bgrewriteaof")
 
     @_query_command
     def lastsave(self, tr) -> int:
         """ Get the UNIX time stamp of the last successful save to disk """
-        return self._query(tr, b'lastsave')
+        return self._query(tr, b"lastsave")
 
     @_query_command
     def dbsize(self, tr) -> int:
         """ Return the number of keys in the currently-selected database. """
-        return self._query(tr, b'dbsize')
+        return self._query(tr, b"dbsize")
 
     @_query_command
     def flushall(self, tr) -> StatusReply:
         """ Remove all keys from all databases """
-        return self._query(tr, b'flushall')
+        return self._query(tr, b"flushall")
 
     @_query_command
     def flushdb(self, tr) -> StatusReply:
         """ Delete all the keys of the currently selected DB. This command never fails. """
-        return self._query(tr, b'flushdb')
+        return self._query(tr, b"flushdb")
 
     @_query_command
-    def type(self, tr, key:NativeType) -> StatusReply:
+    def type(self, tr, key: NativeType) -> StatusReply:
         """ Determine the type stored at key """
-        return self._query(tr, b'type', self.encode_from_native(key))
+        return self._query(tr, b"type", self.encode_from_native(key))
 
     @_query_command
-    def config_set(self, tr, parameter:str, value:str) -> StatusReply:
+    def config_set(self, tr, parameter: str, value: str) -> StatusReply:
         """ Set a configuration parameter to the given value """
-        return self._query(tr, b'config', b'set', self.encode_from_native(parameter),
-                        self.encode_from_native(value))
+        return self._query(
+            tr,
+            b"config",
+            b"set",
+            self.encode_from_native(parameter),
+            self.encode_from_native(value),
+        )
 
     @_query_command
-    def config_get(self, tr, parameter:str) -> ConfigPairReply:
+    def config_get(self, tr, parameter: str) -> ConfigPairReply:
         """ Get the value of a configuration parameter """
-        return self._query(tr, b'config', b'get', self.encode_from_native(parameter))
+        return self._query(tr, b"config", b"get", self.encode_from_native(parameter))
 
     @_query_command
     def config_rewrite(self, tr) -> StatusReply:
         """ Rewrite the configuration file with the in memory configuration """
-        return self._query(tr, b'config', b'rewrite')
+        return self._query(tr, b"config", b"rewrite")
 
     @_query_command
     def config_resetstat(self, tr) -> StatusReply:
         """ Reset the stats returned by INFO """
-        return self._query(tr, b'config', b'resetstat')
+        return self._query(tr, b"config", b"resetstat")
 
     @_query_command
-    def info(self, tr, section:(NativeType, NoneType)=None) -> InfoReply:
+    def info(self, tr, section: (NativeType, NoneType) = None) -> InfoReply:
         """ Get information and statistics about the server """
         if section is None:
-            return self._query(tr, b'info')
+            return self._query(tr, b"info")
         else:
-            return self._query(tr, b'info', self.encode_from_native(section))
+            return self._query(tr, b"info", self.encode_from_native(section))
 
     @_query_command
     def shutdown(self, tr, save=False) -> StatusReply:
         """ Synchronously save the dataset to disk and then shut down the server """
-        return self._query(tr, b'shutdown', (b'save' if save else b'nosave'))
+        return self._query(tr, b"shutdown", (b"save" if save else b"nosave"))
 
     @_query_command
     def client_getname(self, tr) -> NativeType:
         """ Get the current connection name """
-        return self._query(tr, b'client', b'getname')
+        return self._query(tr, b"client", b"getname")
 
     @_query_command
     def client_setname(self, tr, name) -> StatusReply:
         """ Set the current connection name """
-        return self._query(tr, b'client', b'setname', self.encode_from_native(name))
+        return self._query(tr, b"client", b"setname", self.encode_from_native(name))
 
     @_query_command
     def client_list(self, tr) -> ClientListReply:
         """ Get the list of client connections """
-        return self._query(tr, b'client', b'list')
+        return self._query(tr, b"client", b"list")
 
     @_query_command
-    def client_kill(self, tr, address:str) -> StatusReply:
+    def client_kill(self, tr, address: str) -> StatusReply:
         """
         Kill the connection of a client
         `address` should be an "ip:port" string.
         """
-        return self._query(tr, b'client', b'kill', address.encode('utf-8'))
+        return self._query(tr, b"client", b"kill", address.encode("utf-8"))
 
     # LUA scripting
 
     @_command
-    async def register_script(self, tr, script:str) -> 'Script':
+    async def register_script(self, tr, script: str) -> "Script":
         """
         Register a LUA script.
 
@@ -2020,17 +2453,19 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         # The register_script APi was made compatible with the redis.py library:
         # https://github.com/andymccurdy/redis-py
         sha = await self.script_load(tr, script)
-        return Script(sha, script, lambda:self.evalsha)
+        return Script(sha, script, lambda: self.evalsha)
 
     @_query_command
-    def script_exists(self, tr, shas:ListOf(str)) -> ListOf(bool):
+    def script_exists(self, tr, shas: ListOf(str)) -> ListOf(bool):
         """ Check existence of scripts in the script cache. """
-        return self._query(tr, b'script', b'exists', *[ sha.encode('ascii') for sha in shas ])
+        return self._query(
+            tr, b"script", b"exists", *[sha.encode("ascii") for sha in shas]
+        )
 
     @_query_command
     def script_flush(self, tr) -> StatusReply:
         """ Remove all the scripts from the script cache. """
-        return self._query(tr, b'script', b'flush')
+        return self._query(tr, b"script", b"flush")
 
     @_query_command
     async def script_kill(self, tr) -> StatusReply:
@@ -2040,17 +2475,21 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         scrips running.
         """
         try:
-            return await self._query(tr, b'script', b'kill')
+            return await self._query(tr, b"script", b"kill")
         except ErrorReply as e:
-            if 'NOTBUSY' in e.args[0]:
+            if "NOTBUSY" in e.args[0]:
                 raise NoRunningScriptError
             else:
                 raise
 
     @_query_command
-    async def evalsha(self, tr, sha:str,
-                        keys:(ListOf(NativeType), NoneType)=None,
-                        args:(ListOf(NativeType), NoneType)=None) -> EvalScriptReply:
+    async def evalsha(
+        self,
+        tr,
+        sha: str,
+        keys: (ListOf(NativeType), NoneType) = None,
+        args: (ListOf(NativeType), NoneType) = None,
+    ) -> EvalScriptReply:
         """
         Evaluates a script cached on the server side by its SHA1 digest.
         Scripts are cached on the server side using the SCRIPT LOAD command.
@@ -2060,27 +2499,33 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         This will raise a :class:`~asyncio_redis.ScriptKilledError`
         exception if the script was killed.
         """
-        if not keys: keys = []
-        if not args: args = []
+        if not keys:
+            keys = []
+        if not args:
+            args = []
 
         try:
-            result = await self._query(tr, b'evalsha', sha.encode('ascii'),
-                        self._encode_int(len(keys)),
-                        *map(self.encode_from_native, keys + args))
+            result = await self._query(
+                tr,
+                b"evalsha",
+                sha.encode("ascii"),
+                self._encode_int(len(keys)),
+                *map(self.encode_from_native, keys + args),
+            )
 
             return result
         except ErrorReply:
             raise ScriptKilledError
 
     @_query_command
-    def script_load(self, tr, script:str) -> str:
+    def script_load(self, tr, script: str) -> str:
         """ Load script, returns sha1 """
-        return self._query(tr, b'script', b'load', script.encode('utf-8'))
+        return self._query(tr, b"script", b"load", script.encode("utf-8"))
 
     # Scanning
 
     @_command
-    async def scan(self, tr, match:(NativeType, NoneType)=None) -> Cursor:
+    async def scan(self, tr, match: (NativeType, NoneType) = None) -> Cursor:
         """
         Walk through the keys space. You can either fetch the items one by one
         or in bulk.
@@ -2114,71 +2559,100 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
         Redis reference: http://redis.io/commands/scan
         """
+
         def scanfunc(cursor, count):
             return self._scan(tr, cursor, match, count)
 
-        return Cursor(name='scan(match=%r)' % match, scanfunc=scanfunc)
+        return Cursor(name="scan(match=%r)" % match, scanfunc=scanfunc)
 
     @_query_command
-    def _scan(self, tr, cursor:int, match:(NativeType,NoneType), count:int) -> _ScanPart:
-        match = b'*' if match is None else self.encode_from_native(match)
+    def _scan(
+        self, tr, cursor: int, match: (NativeType, NoneType), count: int
+    ) -> _ScanPart:
+        match = b"*" if match is None else self.encode_from_native(match)
 
-        return self._query(tr, b'scan', self._encode_int(cursor),
-                    b'match', match,
-                    b'count', self._encode_int(count))
+        return self._query(
+            tr,
+            b"scan",
+            self._encode_int(cursor),
+            b"match",
+            match,
+            b"count",
+            self._encode_int(count),
+        )
 
     @_command
-    async def sscan(self, tr, key:NativeType, match:(NativeType,NoneType)=None) -> SetCursor:
+    async def sscan(
+        self, tr, key: NativeType, match: (NativeType, NoneType) = None
+    ) -> SetCursor:
         """
         Incrementally iterate set elements
 
         Also see: :func:`~asyncio_redis.RedisProtocol.scan`
         """
-        name = 'sscan(key=%r match=%r)' % (key, match)
+        name = "sscan(key=%r match=%r)" % (key, match)
 
         def scan(cursor, count):
-            return self._do_scan(tr, b'sscan', key, cursor, match, count)
+            return self._do_scan(tr, b"sscan", key, cursor, match, count)
 
         return SetCursor(name=name, scanfunc=scan)
 
     @_command
-    async def hscan(self, tr, key:NativeType, match:(NativeType,NoneType)=None) -> DictCursor:
+    async def hscan(
+        self, tr, key: NativeType, match: (NativeType, NoneType) = None
+    ) -> DictCursor:
         """
         Incrementally iterate hash fields and associated values
         Also see: :func:`~asyncio_redis.RedisProtocol.scan`
         """
-        name = 'hscan(key=%r match=%r)' % (key, match)
+        name = "hscan(key=%r match=%r)" % (key, match)
 
         def scan(cursor, count):
-            return self._do_scan(tr, b'hscan', key, cursor, match, count)
+            return self._do_scan(tr, b"hscan", key, cursor, match, count)
 
         return DictCursor(name=name, scanfunc=scan)
 
     @_command
-    async def zscan(self, tr, key:NativeType, match:(NativeType,NoneType)=None) -> DictCursor:
+    async def zscan(
+        self, tr, key: NativeType, match: (NativeType, NoneType) = None
+    ) -> DictCursor:
         """
         Incrementally iterate sorted sets elements and associated scores
         Also see: :func:`~asyncio_redis.RedisProtocol.scan`
         """
-        name = 'zscan(key=%r match=%r)' % (key, match)
+        name = "zscan(key=%r match=%r)" % (key, match)
 
         def scan(cursor, count):
-            return self._do_scan(b'zscan', key, cursor, match, count)
+            return self._do_scan(b"zscan", key, cursor, match, count)
 
         return ZCursor(name=name, scanfunc=scan)
 
     @_query_command
-    def _do_scan(self, tr, verb:bytes, key:NativeType, cursor:int, match:(NativeType,NoneType), count:int) -> _ScanPart:
-        match = b'*' if match is None else self.encode_from_native(match)
+    def _do_scan(
+        self,
+        tr,
+        verb: bytes,
+        key: NativeType,
+        cursor: int,
+        match: (NativeType, NoneType),
+        count: int,
+    ) -> _ScanPart:
+        match = b"*" if match is None else self.encode_from_native(match)
 
-        return self._query(tr, verb, self.encode_from_native(key),
-                self._encode_int(cursor),
-                b'match', match,
-                b'count', self._encode_int(count))
+        return self._query(
+            tr,
+            verb,
+            self.encode_from_native(key),
+            self._encode_int(cursor),
+            b"match",
+            match,
+            b"count",
+            self._encode_int(count),
+        )
 
     # Transaction
     @_command
-    async def watch(self, tr, keys:ListOf(NativeType)) -> NoneType:
+    async def watch(self, tr, keys: ListOf(NativeType)) -> NoneType:
         """
         Watch keys.
 
@@ -2205,12 +2679,16 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         """
         return await self._watch(tr, keys)
 
-    async def _watch(self, tr, keys:ListOf(NativeType)) -> NoneType:
-        result = await self._query(tr, b'watch', *map(self.encode_from_native, keys), _bypass=True)
-        assert result == b'OK'
+    async def _watch(self, tr, keys: ListOf(NativeType)) -> NoneType:
+        result = await self._query(
+            tr, b"watch", *map(self.encode_from_native, keys), _bypass=True
+        )
+        assert result == b"OK"
 
     @_command
-    async def multi(self, tr, watch:(ListOf(NativeType),NoneType)=None) -> 'Transaction':
+    async def multi(
+        self, tr, watch: (ListOf(NativeType), NoneType) = None
+    ) -> "Transaction":
         """
         Start of transaction.
 
@@ -2233,7 +2711,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         """
         # Create transaction object.
         if tr != _NoTransaction:
-            raise Error('Multi calls can not be nested.')
+            raise Error("Multi calls can not be nested.")
         else:
             await self._transaction_lock.acquire()
             tr = Transaction(self)
@@ -2244,8 +2722,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             await self._watch(tr, watch)
 
         # Call multi
-        result = await self._query(tr, b'multi', _bypass=True)
-        assert result == b'OK'
+        result = await self._query(tr, b"multi", _bypass=True)
+        assert result == b"OK"
 
         self._transaction_response_queue = deque()
 
@@ -2256,17 +2734,17 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         Execute all commands issued after MULTI
         """
         if not self._transaction or self._transaction != tr:
-            raise Error('Not in transaction')
+            raise Error("Not in transaction")
         try:
             futures_and_postprocessors = self._transaction_response_queue
             self._transaction_response_queue = None
 
             # Get transaction answers.
-            multi_bulk_reply = await self._query(tr, b'exec', _bypass=True)
+            multi_bulk_reply = await self._query(tr, b"exec", _bypass=True)
 
             if multi_bulk_reply is None:
                 # We get None when a transaction failed.
-                raise TransactionError('Transaction failed.')
+                raise TransactionError("Transaction failed.")
             else:
                 assert isinstance(multi_bulk_reply, MultiBulkReply)
 
@@ -2291,11 +2769,11 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         Discard all commands issued after MULTI
         """
         if not self._transaction or self._transaction != tr:
-            raise Error('Not in transaction')
+            raise Error("Not in transaction")
 
         try:
-            result = await self._query(tr, b'discard', _bypass=True)
-            assert result == b'OK'
+            result = await self._query(tr, b"discard", _bypass=True)
+            assert result == b"OK"
         finally:
             self._transaction_response_queue = deque()
             self._transaction = None
@@ -2306,14 +2784,15 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         Forget about all watched keys
         """
         if not self._transaction or self._transaction != tr:
-            raise Error('Not in transaction')
+            raise Error("Not in transaction")
 
-        result = await self._query(tr, b'unwatch')   # XXX: should be _bypass???
-        assert result == b'OK'
+        result = await self._query(tr, b"unwatch")  # XXX: should be _bypass???
+        assert result == b"OK"
 
 
 class Script:
     """ Lua script. """
+
     def __init__(self, sha, code, get_evalsha_func):
         self.sha = sha
         self.code = code
@@ -2344,6 +2823,7 @@ class Transaction:
 
     More info: http://redis.io/topics/transactions
     """
+
     def __init__(self, protocol):
         self._protocol = protocol
 
@@ -2362,9 +2842,10 @@ class Transaction:
         @wraps(method)
         def wrapper(*a, **kw):
             if self._protocol._transaction != self:
-                raise Error('Transaction already finished or invalid.')
+                raise Error("Transaction already finished or invalid.")
 
             return method(self, *a, **kw)
+
         return wrapper
 
     def discard(self):
@@ -2382,7 +2863,7 @@ class Transaction:
         """
         return self._protocol._exec(self)
 
-    def unwatch(self): # XXX: test
+    def unwatch(self):  # XXX: test
         """
         Forget about all watched keys
         """
@@ -2393,6 +2874,7 @@ class Subscription:
     """
     Pubsub subscription
     """
+
     def __init__(self, protocol):
         self.protocol = protocol
         self._messages_queue = asyncio.Queue()  # Pubsub queue
@@ -2433,15 +2915,27 @@ class HiRedisProtocol(RedisProtocol, metaclass=_RedisProtocolMeta):
     you won't see the first item of a multi bulk reply, before the whole
     response has been parsed.
     """
-    def __init__(self, *, password=None, db=0, encoder=None,
-                 connection_lost_callback=None, enable_typechecking=True):
-        super().__init__(password=password,
-                         db=db,
-                         encoder=encoder,
-                         connection_lost_callback=connection_lost_callback,
-                         enable_typechecking=enable_typechecking)
+
+    def __init__(
+        self,
+        *,
+        password=None,
+        db=0,
+        encoder=None,
+        connection_lost_callback=None,
+        enable_typechecking=True,
+    ):
+        super().__init__(
+            password=password,
+            db=db,
+            encoder=encoder,
+            connection_lost_callback=connection_lost_callback,
+            enable_typechecking=enable_typechecking,
+        )
         self._hiredis = None
-        assert hiredis, "`hiredis` libary not available. Please don't use HiRedisProtocol."
+        assert (
+            hiredis
+        ), "`hiredis` libary not available. Please don't use HiRedisProtocol."
 
     def connection_made(self, transport):
         super().connection_made(transport)

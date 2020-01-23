@@ -1,10 +1,10 @@
 from collections import deque
 
 __all__ = (
-    'Cursor',
-    'DictCursor',
-    'SetCursor',
-    'ZCursor',
+    "Cursor",
+    "DictCursor",
+    "SetCursor",
+    "ZCursor",
 )
 
 SCAN_COUNT_DEFAULT = 10
@@ -15,6 +15,7 @@ class Cursor:
     Cursor for walking through the results of a :func:`scan
     <asyncio_redis.RedisProtocol.scan>` query.
     """
+
     def __init__(self, name, scanfunc):
         self._queue = deque()
         self._cursor = 0
@@ -27,7 +28,7 @@ class Cursor:
         self.count = SCAN_COUNT_DEFAULT
 
     def __repr__(self):
-        return '<%s %s>' % (self.__class__.__name__, self._name)
+        return "<%s %s>" % (self.__class__.__name__, self._name)
 
     async def _fetch_more(self):
         """ Get next chunk of keys from Redis """
@@ -72,6 +73,7 @@ class SetCursor(Cursor):
     Cursor for walking through the results of a :func:`sscan
     <asyncio_redis.RedisProtocol.sscan>` query.
     """
+
     async def fetchall(self):
         result = await super().fetchall()
         return set(result)
@@ -82,6 +84,7 @@ class DictCursor(Cursor):
     Cursor for walking through the results of a :func:`hscan
     <asyncio_redis.RedisProtocol.hscan>` query.
     """
+
     def _parse(self, key, value):
         return key, value
 
@@ -95,7 +98,7 @@ class DictCursor(Cursor):
 
         if key is not None:
             key, value = self._parse(key, value)
-            return { key: value }
+            return {key: value}
 
     async def fetchall(self):
         """ Coroutine that reads all the items in one dictionary. """
@@ -116,6 +119,7 @@ class ZCursor(DictCursor):
     Cursor for walking through the results of a :func:`zscan
     <asyncio_redis.RedisProtocol.zscan>` query.
     """
+
     def _parse(self, key, value):
         # Mapping { key: score_as_float }
         return key, float(value)

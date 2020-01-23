@@ -1,10 +1,10 @@
+import asyncio
+import warnings
+from functools import wraps
+
 from .connection import Connection
 from .exceptions import NoAvailableConnectionsInPoolError
 from .protocol import RedisProtocol, Script
-
-from functools import wraps
-import asyncio
-import warnings
 
 
 class Pool:
@@ -20,10 +20,21 @@ class Pool:
         connection = await Pool.create(host='localhost', port=6379, poolsize=10)
         result = await connection.set('key', 'value')
     """
+
     @classmethod
-    async def create(cls, host='localhost', port=6379, *, password=None, db=0,
-               encoder=None, poolsize=1, auto_reconnect=True, loop=None,
-               protocol_class=RedisProtocol):
+    async def create(
+        cls,
+        host="localhost",
+        port=6379,
+        *,
+        password=None,
+        db=0,
+        encoder=None,
+        poolsize=1,
+        auto_reconnect=True,
+        loop=None,
+        protocol_class=RedisProtocol,
+    ):
         """
         Create a new connection pool instance.
 
@@ -74,7 +85,9 @@ class Pool:
         return self
 
     def __repr__(self):
-        return f"Pool(host='{self._host}', port={self._port}, poolsize={self._poolsize})"
+        return (
+            f"Pool(host='{self._host}', port={self._port}, poolsize={self._poolsize})"
+        )
 
     @property
     def poolsize(self):
@@ -125,16 +138,16 @@ class Pool:
             return getattr(connection, name)
 
         raise NoAvailableConnectionsInPoolError(
-            f'No available connections in the pool: size={self.poolsize}, '
-            f'in_use={self.connections_in_use}, connected={self.connections_connected}'
+            f"No available connections in the pool: size={self.poolsize}, "
+            f"in_use={self.connections_in_use}, connected={self.connections_connected}"
         )
 
     # Proxy the register_script method, so that the returned object will
     # execute on any available connection in the pool.
     @wraps(RedisProtocol.register_script)
-    async def register_script(self, script:str) -> Script:
+    async def register_script(self, script: str) -> Script:
         # Call register_script from the Protocol.
-        script = await self.__getattr__('register_script')(script)
+        script = await self.__getattr__("register_script")(script)
         assert isinstance(script, Script)
 
         # Return a new script instead that runs it on any connection of the pool.

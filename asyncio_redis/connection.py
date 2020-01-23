@@ -1,8 +1,9 @@
-from .log import logger
-from .protocol import RedisProtocol, _all_commands
 import asyncio
 import logging
 import warnings
+
+from .log import logger
+from .protocol import RedisProtocol, _all_commands
 
 
 class Connection:
@@ -15,9 +16,20 @@ class Connection:
         connection = await Connection.create(host='localhost', port=6379)
         result = await connection.set('key', 'value')
     """
+
     @classmethod
-    async def create(cls, host='localhost', port=6379, *, password=None, db=0,
-               encoder=None, auto_reconnect=True, loop=None, protocol_class=RedisProtocol):
+    async def create(
+        cls,
+        host="localhost",
+        port=6379,
+        *,
+        password=None,
+        db=0,
+        encoder=None,
+        auto_reconnect=True,
+        loop=None,
+        protocol_class=RedisProtocol,
+    ):
         """
         :param str host:
             Address, either host or unix domain socket path
@@ -38,7 +50,7 @@ class Connection:
         :type protocol_class:
             :class:`~asyncio_redis.RedisProtocol`
         """
-        assert port >= 0, "Unexpected port value: %r" % (port, )
+        assert port >= 0, "Unexpected port value: %r" % (port,)
         if loop:
             warnings.warn("Deprecated parameter: loop", DeprecationWarning)
 
@@ -46,7 +58,7 @@ class Connection:
 
         connection.host = host
         connection.port = port
-        connection._retry_interval = .5
+        connection._retry_interval = 0.5
         connection._closed = False
         connection._closing = False
 
@@ -59,8 +71,12 @@ class Connection:
                 loop.create_task(connection._reconnect())
 
         # Create protocol instance
-        connection.protocol = protocol_class(password=password, db=db, encoder=encoder,
-                        connection_lost_callback=connection_lost)
+        connection.protocol = protocol_class(
+            password=password,
+            db=db,
+            encoder=encoder,
+            connection_lost_callback=connection_lost,
+        )
 
         # Connect
         if connection._auto_reconnect:
@@ -81,7 +97,7 @@ class Connection:
 
     def _reset_retry_interval(self):
         """ Set the initial retry interval. """
-        self._retry_interval = .5
+        self._retry_interval = 0.5
 
     def _increase_retry_interval(self):
         """ When a connection failed. Increase the interval."""
@@ -92,7 +108,7 @@ class Connection:
         Set up Redis connection.
         """
         loop = asyncio.get_event_loop()
-        logger.log(logging.INFO, 'Connecting to redis')
+        logger.log(logging.INFO, "Connecting to redis")
         if self.port:
             await loop.create_connection(lambda: self.protocol, self.host, self.port)
         else:
@@ -113,7 +129,7 @@ class Connection:
                 interval = self._get_retry_interval()
                 logger.log(
                     logging.INFO,
-                    f'Connecting to redis failed. Retrying in {interval} seconds',
+                    f"Connecting to redis failed. Retrying in {interval} seconds",
                 )
                 await asyncio.sleep(interval)
 
@@ -125,7 +141,7 @@ class Connection:
         return getattr(self.protocol, name)
 
     def __repr__(self):
-        return 'Connection(host=%r, port=%r)' % (self.host, self.port)
+        return "Connection(host=%r, port=%r)" % (self.host, self.port)
 
     def close(self):
         """

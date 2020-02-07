@@ -5,11 +5,7 @@ strings and encoding the other way around. We also have a `BytesEncoder`, which
 provides raw access to the redis server.
 """
 
-__all__ = (
-    "BaseEncoder",
-    "BytesEncoder",
-    "UTF8Encoder",
-)
+__all__ = ("BaseEncoder", "BytesEncoder", "UTF8Encoder")
 
 
 class BaseEncoder:

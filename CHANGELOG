@@ -13,6 +13,7 @@ CHANGELOG
   referenced from the top-level module in the docstrings too.
   E.g. :class:`asyncio_redis.exceptions.Error` has changed to
   :class:`asyncio_redis.Error`.
+- Added flake8, black, and isort as mandatory CI checks
 
 
 0.15.1: 2018-07-30

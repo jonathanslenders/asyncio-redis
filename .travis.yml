@@ -1,23 +1,51 @@
 language: python
 
-python:
-  - "3.6"
-  - "3.7"
-  - "3.8"
-
 before_install:
   - sudo apt-get install redis-server
   - sudo service redis-server start
   - redis-server --version
   - which redis-server
 
-install:
-  - "pip install ."
-  - "pip install hiredis"
-
-script: ./tests.py
-
-env:
-  matrix:
-  - "REDIS_PORT=6379"
-  - "START_REDIS_SERVER=True REDIS_PORT=0 REDIS_HOST=/tmp/asyncio"
+jobs:
+  include:
+  # Code linters
+  - name: black
+    python: "3.8"
+    install: python -m pip install black
+    script: black -t py36 .
+  - name: isort
+    python: "3.8"
+    install: python -m pip install isort
+    script: isort -rc --check .
+  - name: flake8
+    python: "3.8"
+    install: python -m pip install flake8
+    script: flake8
+  # Run unit tests on different Python versions
+  - name: Python 3.6
+    python: "3.6"
+    install: python -m pip install .[hiredis]
+    script: python tests.py
+  - name: Python 3.7
+    python: "3.7"
+    install: python -m pip install .[hiredis]
+    script: python tests.py
+  - name: Python 3.8
+    python: "3.8"
+    install: python -m pip install .[hiredis]
+    script: python tests.py
+  # Run unit tests on different configurations
+  - name: No hiredis
+    python: "3.8"
+    install: python -m pip install .
+    script: python tests.py
+  - name: Start redis server
+    python: "3.8"
+    env: START_REDIS_SERVER=True REDIS_PORT=0 REDIS_HOST=/tmp/asyncio
+    install: python -m pip install .[hiredis]
+    script: python tests.py
+  # Documentation
+  - name: docs
+    python: "3.8"
+    install: python -m pip install . sphinx sphinx_rtd_theme
+    script: sphinx-build -n -j auto -b html -d build/doctrees docs build/html

@@ -1,11 +1,6 @@
 from collections import deque
 
-__all__ = (
-    "Cursor",
-    "DictCursor",
-    "SetCursor",
-    "ZCursor",
-)
+__all__ = ("Cursor", "DictCursor", "SetCursor", "ZCursor")
 
 SCAN_COUNT_DEFAULT = 10
 
@@ -48,7 +43,8 @@ class Cursor:
         # Make sure that we have at least some items in our queue, unless we're done.
         # Notice that we are using 'while' instead of 'if'. This is because
         # Redis can return a chunk of zero items, even when we're not yet finished.
-        # See: https://github.com/jonathanslenders/asyncio-redis/issues/65#issuecomment-127026408
+        # See:
+        # https://github.com/jonathanslenders/asyncio-redis/issues/65#issuecomment-127026408
         while not self._queue and not self._done:
             await self._fetch_more()
 

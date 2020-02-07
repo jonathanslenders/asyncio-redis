@@ -2,3 +2,7 @@
 __pycache__
 .idea
 *.ipynb
+build
+dist
+.eggs
+*.egg-info

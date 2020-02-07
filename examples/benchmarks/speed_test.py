@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-"""
-Benchmank how long it takes to set 10,000 keys in the database.
+"""Benchmark how long it takes to set 10,000 keys in the database.
 """
 import asyncio
 import logging
@@ -22,7 +21,8 @@ async def main():
     try:
         # === Benchmark 1 ==
         print(
-            "1. How much time does it take to set 10,000 values in Redis? (without pipelining)"
+            "1. How much time does it take to set 10,000 values in Redis? "
+            "(without pipelining)"
         )
         print("Starting...")
         start = time.time()
@@ -39,7 +39,8 @@ async def main():
         # === Benchmark 2 (should be at least 3x as fast) ==
 
         print(
-            "2. How much time does it take if we use asyncio.gather, and pipeline requests?"
+            "2. How much time does it take if we use asyncio.gather, "
+            "and pipeline requests?"
         )
         print("Starting...")
         start = time.time()

@@ -56,9 +56,8 @@ _NoTransaction = _NoTransactionType()
 
 
 class ZScoreBoundary:
-    """
-    Score boundary for a sorted set.
-    for queries like zrangebyscore and similar
+    """Score boundary for a sorted set,
+    for queries like zrangebyscore and similar.
 
     :param value: Value for the boundary.
     :type value: float
@@ -92,7 +91,8 @@ class ZAggregate(enum.Enum):
 
 
 class PipelinedCall:
-    """ Track record for call that is being executed in a protocol. """
+    """Track record for call that is being executed in a protocol
+    """
 
     __slots__ = ("cmd", "is_blocking")
 
@@ -102,8 +102,7 @@ class PipelinedCall:
 
 
 class MultiBulkReply:
-    """
-    Container for a multi bulk reply.
+    """Container for a multi bulk reply.
     """
 
     def __init__(self, protocol, count):
@@ -118,16 +117,14 @@ class MultiBulkReply:
         self.count = int(count)
 
     def _feed_received(self, item):
-        """
-        Feed entry for the parser.
+        """Feed entry for the parser
         """
         # Push received items on the queue
         self._data_queue.append(item)
         self._flush()
 
     def _flush(self):
-        """
-        Answer read queries when we have enough data in our multibulk reply.
+        """Answer read queries when we have enough data in our multibulk reply
         """
         # As long as we have more data in our queue then we require for a read
         # query -> answer queries.
@@ -150,7 +147,8 @@ class MultiBulkReply:
                 f.set_result(data)
 
     def _decode(self, result):
-        """ Decode bytes to native Python types. """
+        """Decode bytes to native Python types
+        """
         if isinstance(result, (StatusReply, int, float, MultiBulkReply)):
             # Note that MultiBulkReplies can be nested. e.g. in the 'scan' operation.
             return result
@@ -162,7 +160,8 @@ class MultiBulkReply:
             raise AssertionError("Invalid type: %r" % type(result))
 
     def _read(self, decode=True, count=1, _one=False):
-        """ Do read operation on the queue. Return future. """
+        """Do read operation on the queue. Return future.
+        """
         f = asyncio.Future()
         self._f_queue.append((count, f, decode, _one))
 
@@ -172,16 +171,14 @@ class MultiBulkReply:
         return f
 
     def iter_raw(self):
-        """
-        Iterate over all multi bulk packets. This yields futures that won't
-        decode bytes yet.
+        """Iterate over all multi bulk packets.
+        This yields futures that won't decode bytes yet.
         """
         for i in range(self.count):
             yield self._read(decode=False, _one=True)
 
     def __iter__(self):
-        """
-        Iterate over the reply. This yields coroutines of the decoded packets.
+        """Iterate over the reply. This yields coroutines of the decoded packets.
         It decodes bytes automatically using protocol.decode_to_native.
         """
         for i in range(self.count):
@@ -192,7 +189,8 @@ class MultiBulkReply:
 
 
 class _ScanPart:
-    """ Internal: result chunk of a scan operation. """
+    """Internal: result chunk of a scan operation
+    """
 
     def __init__(self, new_cursor_pos, items):
         self.new_cursor_pos = new_cursor_pos
@@ -200,8 +198,7 @@ class _ScanPart:
 
 
 class PostProcessors:
-    """
-    At the protocol level, we only know about a few basic classes; they
+    """At the protocol level, we only know about a few basic classes; they
     include: bool, int, StatusReply, MultiBulkReply and bytes.
     This will return a postprocessor function that turns these into more
     meaningful objects.
@@ -213,8 +210,7 @@ class PostProcessors:
 
     @classmethod
     def get_all(cls, return_type):
-        """
-        Return list of (suffix, return_type, post_processor)
+        """Return list of (suffix, return_type, post_processor)
         """
         default = cls.get_default(return_type)
         alternate = cls.get_alternate_post_processor(return_type)
@@ -226,7 +222,8 @@ class PostProcessors:
 
     @classmethod
     def get_default(cls, return_type):
-        """ Give post processor function for return type. """
+        """Give post processor function for return type
+        """
         return {
             ListReply: cls.multibulk_as_list,
             SetReply: cls.multibulk_as_set,
@@ -254,8 +251,9 @@ class PostProcessors:
 
     @classmethod
     def get_alternate_post_processor(cls, return_type):
-        """ For list/set/dict. Create additional post processors that return
-        python classes rather than ListReply/SetReply/DictReply """
+        """For list/set/dict. Create additional post processors that return
+        python classes rather than ListReply/SetReply/DictReply.
+        """
         original_post_processor = cls.get_default(return_type)
 
         if return_type == ListReply:
@@ -320,8 +318,7 @@ class PostProcessors:
         return ConfigPairReply(parameter, value)
 
     async def multibulk_as_scanpart(protocol, result):
-        """
-        Process scanpart result.
+        """Process scanpart result.
         This is a multibulk reply of length two, where the first item is the
         new cursor position and the second item is a nested multi bulk reply
         containing all the elements.
@@ -389,7 +386,8 @@ class PostProcessors:
 
 
 class ListOf:
-    """ Annotation helper for protocol methods. """
+    """Annotation helper for protocol methods
+    """
 
     def __init__(self, type_):
         self.type = type_
@@ -405,8 +403,7 @@ class ListOf:
 
 
 class NativeType:
-    """
-    Constant which represents the native Python type that's used.
+    """Constant which represents the native Python type that's used
     """
 
     def __new__(cls):
@@ -414,8 +411,7 @@ class NativeType:
 
 
 class CommandCreator:
-    """
-    Utility for creating a wrapper around the Redis protocol methods.
+    """Utility for creating a wrapper around the Redis protocol methods.
     This will also do type checking.
 
     This wrapper handles (optionally) post processing of the returned data and
@@ -431,12 +427,14 @@ class CommandCreator:
 
     @property
     def specs(self):
-        """ Argspecs """
+        """Argspecs
+        """
         return getfullargspec(self.method)
 
     @property
     def return_type(self):
-        """ Return type as defined in the method's annotation. """
+        """Return type as defined in the method's annotation
+        """
         return self.specs.annotations.get("return", None)
 
     @property
@@ -445,8 +443,7 @@ class CommandCreator:
 
     @classmethod
     def get_real_type(cls, protocol, type_):
-        """
-        Given a protocol instance, and type annotation, return something that
+        """Given a protocol instance, and type annotation, return something that
         we can pass to isinstance for the typechecking.
         """
         # If NativeType was given, replace it with the type of the protocol
@@ -465,14 +462,14 @@ class CommandCreator:
             return type_
 
     def _create_input_typechecker(self):
-        """ Return function that does typechecking on input data. """
+        """Return function that does typechecking on input data
+        """
         params = self.params
 
         if params:
 
             def typecheck_input(protocol, *a, **kw):
-                """
-                Given a protocol instance and *a/**kw of this method, raise TypeError
+                """Given a protocol instance and *a/**kw of this method, raise TypeError
                 when the signature doesn't match.
                 """
                 if protocol.enable_typechecking:
@@ -504,25 +501,23 @@ class CommandCreator:
         return typecheck_input
 
     def _create_return_typechecker(self, return_type):
-        """ Return function that does typechecking on output data. """
+        """Return function that does typechecking on output data
+        """
         if return_type and not isinstance(
             return_type, str
         ):  # Exclude 'Transaction'/'Subscription' which are 'str'
 
             def typecheck_return(protocol, result):
-                """
-                Given protocol and result value. Raise TypeError if the result is of the wrong type.
+                """Given protocol and result value. Raise TypeError if the result is of
+                the wrong type.
                 """
                 if protocol.enable_typechecking:
                     expected_type = self.get_real_type(protocol, return_type)
                     if not isinstance(result, expected_type):
                         raise TypeError(
-                            "Got unexpected return type %r in RedisProtocol.%s, expected %r"
-                            % (
-                                type(result).__name__,
-                                self.method.__name__,
-                                expected_type,
-                            )
+                            f"Got unexpected return type {type(result).__name__!r} in "
+                            f"RedisProtocol.{self.method.__name__}, "
+                            f"expected {expected_type!r}"
                         )
 
         else:
@@ -546,26 +541,27 @@ class CommandCreator:
         # Use function annotations to generate param documentation.
 
         def get_name(type_):
-            """ Turn type annotation into doc string. """
+            """Turn type annotation into doc string
+            """
             try:
                 return {
-                    BlockingPopReply: ":class:`BlockingPopReply <asyncio_redis.replies.BlockingPopReply>`",
-                    ConfigPairReply: ":class:`ConfigPairReply <asyncio_redis.replies.ConfigPairReply>`",
+                    BlockingPopReply: ":class:`BlockingPopReply <asyncio_redis.replies.BlockingPopReply>`",  # noqa: E501
+                    ConfigPairReply: ":class:`ConfigPairReply <asyncio_redis.replies.ConfigPairReply>`",  # noqa: E501
                     DictReply: ":class:`DictReply <asyncio_redis.replies.DictReply>`",
                     InfoReply: ":class:`InfoReply <asyncio_redis.replies.InfoReply>`",
-                    ClientListReply: ":class:`InfoReply <asyncio_redis.replies.ClientListReply>`",
+                    ClientListReply: ":class:`InfoReply <asyncio_redis.replies.ClientListReply>`",  # noqa: E501
                     ListReply: ":class:`ListReply <asyncio_redis.replies.ListReply>`",
-                    MultiBulkReply: ":class:`MultiBulkReply <asyncio_redis.replies.MultiBulkReply>`",
-                    NativeType: "Native Python type, as defined by :attr:`~asyncio_redis.encoders.BaseEncoder.native_type`",
+                    MultiBulkReply: ":class:`MultiBulkReply <asyncio_redis.replies.MultiBulkReply>`",  # noqa: E501
+                    NativeType: "Native Python type, as defined by :attr:`~asyncio_redis.encoders.BaseEncoder.native_type`",  # noqa: E501
                     NoneType: "None",
                     SetReply: ":class:`SetReply <asyncio_redis.replies.SetReply>`",
-                    StatusReply: ":class:`StatusReply <asyncio_redis.replies.StatusReply>`",
-                    ZRangeReply: ":class:`ZRangeReply <asyncio_redis.replies.ZRangeReply>`",
-                    ZScoreBoundary: ":class:`ZScoreBoundary <asyncio_redis.ZScoreBoundary>`",
-                    EvalScriptReply: ":class:`EvalScriptReply <asyncio_redis.replies.EvalScriptReply>`",
+                    StatusReply: ":class:`StatusReply <asyncio_redis.replies.StatusReply>`",  # noqa: E501
+                    ZRangeReply: ":class:`ZRangeReply <asyncio_redis.replies.ZRangeReply>`",  # noqa: E501
+                    ZScoreBoundary: ":class:`ZScoreBoundary <asyncio_redis.ZScoreBoundary>`",  # noqa: E501
+                    EvalScriptReply: ":class:`EvalScriptReply <asyncio_redis.replies.EvalScriptReply>`",  # noqa: E501
                     Cursor: ":class:`Cursor <asyncio_redis.cursors.Cursor>`",
                     SetCursor: ":class:`SetCursor <asyncio_redis.cursors.SetCursor>`",
-                    DictCursor: ":class:`DictCursor <asyncio_redis.cursors.DictCursor>`",
+                    DictCursor: ":class:`DictCursor <asyncio_redis.cursors.DictCursor>`",  # noqa: E501
                     ZCursor: ":class:`ZCursor <asyncio_redis.cursors.ZCursor>`",
                     _ScanPart: ":class:`_ScanPart",
                     int: "int",
@@ -605,14 +601,12 @@ class CommandCreator:
         )
 
     def get_methods(self):
-        """
-        Return all the methods to be used in the RedisProtocol class.
+        """Return all the methods to be used in the RedisProtocol class.
         """
         return [("", self._get_wrapped_method(None, "", self.return_type))]
 
     def _get_wrapped_method(self, post_process, suffix, return_type):
-        """
-        Return the wrapped method for use in the `RedisProtocol` class.
+        """Return the wrapped method for use in the `RedisProtocol` class.
         """
         typecheck_input = self._create_input_typechecker()
         typecheck_return = self._create_return_typechecker(return_type)
@@ -675,8 +669,7 @@ class CommandCreator:
 
 
 class QueryCommandCreator(CommandCreator):
-    """
-    Like `CommandCreator`, but for methods registered with `_query_command`.
+    """Like `CommandCreator`, but for methods registered with `_query_command`.
     This are the methods that cause commands to be send to the server.
 
     Most of the commands get a reply from the server that needs to be post
@@ -707,8 +700,9 @@ _all_commands = []
 
 
 class _command:
-    """ Mark method as command (to be passed through CommandCreator for the
-    creation of a protocol method) """
+    """Mark method as command (to be passed through CommandCreator for the
+    creation of a protocol method)
+    """
 
     creator = CommandCreator
 
@@ -717,11 +711,11 @@ class _command:
 
 
 class _query_command(_command):
-    """
-    Mark method as query command: This will pass through QueryCommandCreator.
+    """Mark method as query command: This will pass through QueryCommandCreator.
 
-    NOTE: be sure to choose the correct 'returns'-annotation. This will automatially
-    determine the correct post processor function in :class:`PostProcessors`.
+    .. note::
+       Be sure to choose the correct 'returns'-annotation. This will automatically
+       determine the correct post processor function in :class:`PostProcessors`.
     """
 
     creator = QueryCommandCreator
@@ -731,8 +725,7 @@ class _query_command(_command):
 
 
 class _RedisProtocolMeta(type):
-    """
-    Metaclass for `RedisProtocol` which applies the _command decorator.
+    """Metaclass for `RedisProtocol` which applies the _command decorator.
     """
 
     def __new__(cls, name, bases, attrs):
@@ -749,25 +742,29 @@ class _RedisProtocolMeta(type):
 
 
 class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
-    """
-    The Redis Protocol implementation.
+    """The Redis Protocol implementation.
 
     ::
 
         loop = asyncio.get_event_loop()
-        transport, protocol = await loop.create_connection(RedisProtocol, 'localhost', 6379)
+        transport, protocol = await loop.create_connection(
+            RedisProtocol, 'localhost', 6379
+        )
 
-    :param password: Redis database password
-    :type password: Native Python type as defined by the ``encoder`` parameter
-    :param encoder: Encoder to use for encoding to or decoding from redis bytes to a native type.
-                    (Defaults to :class:`~asyncio_redis.encoders.UTF8Encoder`)
-    :type encoder: :class:`~asyncio_redis.encoders.BaseEncoder` instance.
-    :param db: Redis database
-    :type db: int
-    :param enable_typechecking: When ``True``, check argument types for all
-                                redis commands. Normally you want to have this
-                                enabled.
-    :type enable_typechecking: bool
+    :param password:
+        Redis database password
+    :type password:
+        Native Python type as defined by the ``encoder`` parameter
+    :param encoder:
+        Encoder to use for encoding to or decoding from redis bytes to a native type.
+        (Defaults to :class:`~asyncio_redis.encoders.UTF8Encoder`)
+    :type encoder:
+        :class:`~asyncio_redis.encoders.BaseEncoder` instance.
+    :param int db:
+        Redis database
+    :param bool enable_typechecking:
+        When True, check argument types for all redis commands.
+        Normally you want to have this enabled.
     """
 
     def __init__(
@@ -860,22 +857,26 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         loop.create_task(initialize())
 
     def data_received(self, data):
-        """ Process data received from Redis server.  """
+        """Process data received from Redis server
+        """
         self._reader.feed_data(data)
 
     def _encode_int(self, value: int) -> bytes:
-        """ Encodes an integer to bytes. (always ascii) """
+        """Encodes an integer to bytes. (always ascii)
+        """
         if 0 < value < 1000:  # For small values, take pre-encoded string.
             return _SMALL_INTS[value]
         else:
             return str(value).encode("ascii")
 
     def _encode_float(self, value: float) -> bytes:
-        """ Encodes a float to bytes. (always ascii) """
+        """Encodes a float to bytes. (always ascii)
+        """
         return str(value).encode("ascii")
 
     def _encode_zscore_boundary(self, value: ZScoreBoundary) -> str:
-        """ Encodes a zscore boundary. (always ascii) """
+        """Encodes a zscore boundary. (always ascii)
+        """
         if isinstance(value.value, str):
             return str(value.value).encode("ascii")  # +inf and -inf
         elif value.exclude_boundary:
@@ -918,34 +919,38 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @property
     def in_blocking_call(self):
-        """ True when waiting for answer to blocking command. """
+        """True when waiting for answer to blocking command
+        """
         return any(c.is_blocking for c in self._pipelined_calls)
 
     @property
     def in_pubsub(self):
-        """ True when the protocol is in pubsub mode. """
+        """True when the protocol is in pubsub mode
+        """
         return self._in_pubsub
 
     @property
     def in_transaction(self):
-        """ True when we're inside a transaction. """
+        """True when we're inside a transaction
+        """
         return bool(self._transaction)
 
     @property
     def in_use(self):
-        """ True when this protocol is in use. """
+        """True when this protocol is in use
+        """
         return self.in_blocking_call or self.in_pubsub or self.in_transaction
 
     @property
     def is_connected(self):
-        """ True when the underlying transport is connected. """
+        """True when the underlying transport is connected
+        """
         return self._is_connected
 
     # Handle replies
 
     async def _reader_coroutine(self):
-        """
-        Coroutine which reads input from the stream reader and processes it.
+        """Coroutine which reads input from the stream reader and processes it.
         """
         while True:
             try:
@@ -1042,8 +1047,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     # Redis operations.
 
     def _send_command(self, args):
-        """
-        Send Redis request command.
+        """Send Redis request command.
         `args` should be a list of bytes to be written to the transport.
         """
         # Create write buffer.
@@ -1069,8 +1073,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     async def _get_answer(
         self, transaction, answer_f, _bypass=False, call=None
     ):  # XXX: rename _bypass to not_queued
-        """
-        Return an answer to the pipelined query.
+        """Return an answer to the pipelined query.
         (Or when we are in a transaction, return a future for the answer.)
         """
         # Wait for the answer to come in
@@ -1094,8 +1097,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             return result
 
     def _push_answer(self, answer):
-        """
-        Answer future at the queue.
+        """Answer future at the queue.
         """
         f = self._queue.popleft()
 
@@ -1110,8 +1112,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             f.set_result(answer)
 
     async def _query(self, transaction, *args, _bypass=False, set_blocking=False):
-        """
-        Wrapper around both _send_command and _get_answer.
+        """Wrapper around both _send_command and _get_answer.
 
         Coroutine that sends the query to the server, and returns the reply.
         (Where the reply is a simple Redis type: these are `int`,
@@ -1145,7 +1146,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
                 self._transaction_lock.release()
 
         # TODO: when set_blocking=True, only release lock after reading the answer.
-        #       (it doesn't make sense to free the input and pipeline commands in that case.)
+        #       (it doesn't make sense to free the input and pipeline commands in
+        #       that case.)
 
         # Receive answer.
         result = await self._get_answer(
@@ -1157,13 +1159,15 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def auth(self, tr, password: NativeType) -> StatusReply:
-        """ Authenticate to the server """
+        """Authenticate to the server
+        """
         self.password = password
         return self._query(tr, b"auth", self.encode_from_native(password))
 
     @_query_command
     def select(self, tr, db: int) -> StatusReply:
-        """ Change the selected database for the current connection """
+        """Change the selected database for the current connection
+        """
         self.db = db
         return self._query(tr, b"select", self._encode_int(db))
 
@@ -1180,8 +1184,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         only_if_not_exists: bool = False,
         only_if_exists: bool = False,
     ) -> (StatusReply, NoneType):
-        """
-        Set the string value of a key
+        """Set the string value of a key
 
         ::
 
@@ -1222,7 +1225,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     def setex(
         self, tr, key: NativeType, seconds: int, value: NativeType
     ) -> StatusReply:
-        """ Set the string value of a key with expire """
+        """Set the string value of a key with expire
+        """
         return self._query(
             tr,
             b"setex",
@@ -1233,99 +1237,115 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def setnx(self, tr, key: NativeType, value: NativeType) -> bool:
-        """ Set the string value of a key if it does not exist.
-        Returns True if value is successfully set """
+        """Set the string value of a key if it does not exist.
+        Returns True if value is successfully set.
+        """
         return self._query(
             tr, b"setnx", self.encode_from_native(key), self.encode_from_native(value)
         )
 
     @_query_command
     def get(self, tr, key: NativeType) -> (NativeType, NoneType):
-        """ Get the value of a key """
+        """Get the value of a key
+        """
         return self._query(tr, b"get", self.encode_from_native(key))
 
     @_query_command
     def mget(self, tr, keys: ListOf(NativeType)) -> ListReply:
-        """ Returns the values of all specified keys. """
+        """Return the values of all specified keys
+        """
         return self._query(tr, b"mget", *map(self.encode_from_native, keys))
 
     @_query_command
     def strlen(self, tr, key: NativeType) -> int:
-        """ Returns the length of the string value stored at key. An error is
-        returned when key holds a non-string value.  """
+        """Return the length of the string value stored at key. An error is
+        returned when key holds a non-string .
+        """
         return self._query(tr, b"strlen", self.encode_from_native(key))
 
     @_query_command
     def append(self, tr, key: NativeType, value: NativeType) -> int:
-        """ Append a value to a key """
+        """Append a value to a key
+        """
         return self._query(
             tr, b"append", self.encode_from_native(key), self.encode_from_native(value)
         )
 
     @_query_command
     def getset(self, tr, key: NativeType, value: NativeType) -> (NativeType, NoneType):
-        """ Set the string value of a key and return its old value """
+        """Set the string value of a key and return its old value
+        """
         return self._query(
             tr, b"getset", self.encode_from_native(key), self.encode_from_native(value)
         )
 
     @_query_command
     def incr(self, tr, key: NativeType) -> int:
-        """ Increment the integer value of a key by one """
+        """Increment the integer value of a key by one
+        """
         return self._query(tr, b"incr", self.encode_from_native(key))
 
     @_query_command
     def incrby(self, tr, key: NativeType, increment: int) -> int:
-        """ Increment the integer value of a key by the given amount """
+        """Increment the integer value of a key by the given amount
+        """
         return self._query(
             tr, b"incrby", self.encode_from_native(key), self._encode_int(increment)
         )
 
     @_query_command
     def decr(self, tr, key: NativeType) -> int:
-        """ Decrement the integer value of a key by one """
+        """Decrement the integer value of a key by one
+        """
         return self._query(tr, b"decr", self.encode_from_native(key))
 
     @_query_command
     def decrby(self, tr, key: NativeType, increment: int) -> int:
-        """ Decrement the integer value of a key by the given number """
+        """Decrement the integer value of a key by the given number
+        """
         return self._query(
             tr, b"decrby", self.encode_from_native(key), self._encode_int(increment)
         )
 
     @_query_command
     def randomkey(self, tr) -> NativeType:
-        """ Return a random key from the keyspace """
+        """Return a random key from the keyspace
+        """
         return self._query(tr, b"randomkey")
 
     @_query_command
     def exists(self, tr, key: NativeType) -> bool:
-        """ Determine if a key exists """
+        """Determine if a key exists
+        """
         return self._query(tr, b"exists", self.encode_from_native(key))
 
     @_query_command
     def delete(self, tr, keys: ListOf(NativeType)) -> int:
-        """ Delete a key """
+        """Delete a key
+        """
         return self._query(tr, b"del", *map(self.encode_from_native, keys))
 
     @_query_command
     def move(self, tr, key: NativeType, database: int) -> int:
-        """ Move a key to another database """
+        """Move a key to another database
+        """
         return self._query(
             tr, b"move", self.encode_from_native(key), self._encode_int(database)
         )  # TODO: unittest
 
     @_query_command
     def rename(self, tr, key: NativeType, newkey: NativeType) -> StatusReply:
-        """ Rename a key """
+        """Rename a key
+        """
         return self._query(
             tr, b"rename", self.encode_from_native(key), self.encode_from_native(newkey)
         )
 
     @_query_command
     def renamenx(self, tr, key: NativeType, newkey: NativeType) -> int:
-        """ Rename a key, only if the new key does not exist
-        (Returns 1 if the key was successfully renamed.) """
+        """Rename a key, only if the new key does not exist
+        Returns 1 if the key was successfully renamed.
+        """
         return self._query(
             tr,
             b"renamenx",
@@ -1335,17 +1355,20 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def bitop_and(self, tr, destkey: NativeType, srckeys: ListOf(NativeType)) -> int:
-        """ Perform a bitwise AND operation between multiple keys. """
+        """Perform a bitwise AND operation between multiple keys
+        """
         return self._bitop(tr, b"and", destkey, srckeys)
 
     @_query_command
     def bitop_or(self, tr, destkey: NativeType, srckeys: ListOf(NativeType)) -> int:
-        """ Perform a bitwise OR operation between multiple keys. """
+        """Perform a bitwise OR operation between multiple keys
+        """
         return self._bitop(tr, b"or", destkey, srckeys)
 
     @_query_command
     def bitop_xor(self, tr, destkey: NativeType, srckeys: ListOf(NativeType)) -> int:
-        """ Perform a bitwise XOR operation between multiple keys. """
+        """Perform a bitwise XOR operation between multiple keys
+        """
         return self._bitop(tr, b"xor", destkey, srckeys)
 
     def _bitop(self, tr, op, destkey, srckeys):
@@ -1359,7 +1382,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def bitop_not(self, tr, destkey: NativeType, key: NativeType) -> int:
-        """ Perform a bitwise NOT operation between multiple keys. """
+        """Perform a bitwise NOT operation between multiple keys
+        """
         return self._query(
             tr,
             b"bitop",
@@ -1370,7 +1394,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def bitcount(self, tr, key: NativeType, start: int = 0, end: int = -1) -> int:
-        """ Count the number of set bits (population counting) in a string. """
+        """Count the number of set bits (population counting) in a string
+        """
         return self._query(
             tr,
             b"bitcount",
@@ -1381,14 +1406,16 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def getbit(self, tr, key: NativeType, offset: int) -> bool:
-        """ Returns the bit value at offset in the string value stored at key """
+        """Returns the bit value at offset in the string value stored at key
+        """
         return self._query(
             tr, b"getbit", self.encode_from_native(key), self._encode_int(offset)
         )
 
     @_query_command
     def setbit(self, tr, key: NativeType, offset: int, value: bool) -> bool:
-        """ Sets or clears the bit at offset in the string value stored at key """
+        """Sets or clears the bit at offset in the string value stored at key
+        """
         return self._query(
             tr,
             b"setbit",
@@ -1401,43 +1428,40 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def keys(self, tr, pattern: NativeType) -> ListReply:
-        """
-        Find all keys matching the given pattern.
+        """Find all keys matching the given pattern.
 
         .. note:: Also take a look at :func:`~asyncio_redis.RedisProtocol.scan`.
         """
         return self._query(tr, b"keys", self.encode_from_native(pattern))
 
-    #    @_query_command
-    #    def dump(self, key:NativeType):
-    #        """ Return a serialized version of the value stored at the specified key. """
-    #        # Dump does not work yet. It shouldn't be decoded using utf-8'
-    #        raise NotImplementedError('Not supported.')
-
     @_query_command
     def expire(self, tr, key: NativeType, seconds: int) -> int:
-        """ Set a key's time to live in seconds """
+        """Set a key's time to live in seconds
+        """
         return self._query(
             tr, b"expire", self.encode_from_native(key), self._encode_int(seconds)
         )
 
     @_query_command
     def pexpire(self, tr, key: NativeType, milliseconds: int) -> int:
-        """ Set a key's time to live in milliseconds """
+        """Set a key's time to live in milliseconds
+        """
         return self._query(
             tr, b"pexpire", self.encode_from_native(key), self._encode_int(milliseconds)
         )
 
     @_query_command
     def expireat(self, tr, key: NativeType, timestamp: int) -> int:
-        """ Set the expiration for a key as a UNIX timestamp """
+        """Set the expiration for a key as a UNIX timestamp
+        """
         return self._query(
             tr, b"expireat", self.encode_from_native(key), self._encode_int(timestamp)
         )
 
     @_query_command
     def pexpireat(self, tr, key: NativeType, milliseconds_timestamp: int) -> int:
-        """ Set the expiration for a key as a UNIX timestamp specified in milliseconds """
+        """Set the expiration for a key as a UNIX timestamp specified in milliseconds
+        """
         return self._query(
             tr,
             b"pexpireat",
@@ -1447,24 +1471,28 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def persist(self, tr, key: NativeType) -> int:
-        """ Remove the expiration from a key """
+        """Remove the expiration from a key
+        """
         return self._query(tr, b"persist", self.encode_from_native(key))
 
     @_query_command
     def ttl(self, tr, key: NativeType) -> int:
-        """ Get the time to live for a key """
+        """Get the time to live for a key
+        """
         return self._query(tr, b"ttl", self.encode_from_native(key))
 
     @_query_command
     def pttl(self, tr, key: NativeType) -> int:
-        """ Get the time to live for a key in milliseconds """
+        """Get the time to live for a key in milliseconds
+        """
         return self._query(tr, b"pttl", self.encode_from_native(key))
 
     # Set operations
 
     @_query_command
     def sadd(self, tr, key: NativeType, members: ListOf(NativeType)) -> int:
-        """ Add one or more members to a set """
+        """Add one or more members to a set
+        """
         return self._query(
             tr,
             b"sadd",
@@ -1474,7 +1502,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def srem(self, tr, key: NativeType, members: ListOf(NativeType)) -> int:
-        """ Remove one or more members from a set """
+        """Remove one or more members from a set
+        """
         return self._query(
             tr,
             b"srem",
@@ -1484,20 +1513,23 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def spop(self, tr, key: NativeType) -> (NativeType, NoneType):
-        """ Removes and returns a random element from the set value stored at key. """
+        """Remove and return a random element from the set value stored at key
+        """
         return self._query(tr, b"spop", self.encode_from_native(key))
 
     @_query_command
     def srandmember(self, tr, key: NativeType, count: int = 1) -> SetReply:
-        """ Get one or multiple random members from a set
-        (Returns a list of members, even when count==1) """
+        """Get one or multiple random members from a set.
+        Return a list of members, even when count==1.
+        """
         return self._query(
             tr, b"srandmember", self.encode_from_native(key), self._encode_int(count)
         )
 
     @_query_command
     def sismember(self, tr, key: NativeType, value: NativeType) -> bool:
-        """ Determine if a given value is a member of a set """
+        """Determine if a given value is a member of a set
+        """
         return self._query(
             tr,
             b"sismember",
@@ -1507,22 +1539,26 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def scard(self, tr, key: NativeType) -> int:
-        """ Get the number of members in a set """
+        """Get the number of members in a set
+        """
         return self._query(tr, b"scard", self.encode_from_native(key))
 
     @_query_command
     def smembers(self, tr, key: NativeType) -> SetReply:
-        """ Get all the members in a set """
+        """Get all the members in a set
+        """
         return self._query(tr, b"smembers", self.encode_from_native(key))
 
     @_query_command
     def sinter(self, tr, keys: ListOf(NativeType)) -> SetReply:
-        """ Intersect multiple sets """
+        """Intersect multiple sets
+        """
         return self._query(tr, b"sinter", *map(self.encode_from_native, keys))
 
     @_query_command
     def sinterstore(self, tr, destination: NativeType, keys: ListOf(NativeType)) -> int:
-        """ Intersect multiple sets and store the resulting set in a key """
+        """Intersect multiple sets and store the resulting set in a key
+        """
         return self._query(
             tr,
             b"sinterstore",
@@ -1532,12 +1568,14 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def sdiff(self, tr, keys: ListOf(NativeType)) -> SetReply:
-        """ Subtract multiple sets """
+        """Subtract multiple sets
+        """
         return self._query(tr, b"sdiff", *map(self.encode_from_native, keys))
 
     @_query_command
     def sdiffstore(self, tr, destination: NativeType, keys: ListOf(NativeType)) -> int:
-        """ Subtract multiple sets and store the resulting set in a key """
+        """Subtract multiple sets and store the resulting set in a key
+        """
         return self._query(
             tr,
             b"sdiffstore",
@@ -1547,12 +1585,14 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def sunion(self, tr, keys: ListOf(NativeType)) -> SetReply:
-        """ Add multiple sets """
+        """Add multiple sets
+        """
         return self._query(tr, b"sunion", *map(self.encode_from_native, keys))
 
     @_query_command
     def sunionstore(self, tr, destination: NativeType, keys: ListOf(NativeType)) -> int:
-        """ Add multiple sets and store the resulting set in a key """
+        """Add multiple sets and store the resulting set in a key
+        """
         return self._query(
             tr,
             b"sunionstore",
@@ -1564,7 +1604,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     def smove(
         self, tr, source: NativeType, destination: NativeType, value: NativeType
     ) -> int:
-        """ Move a member from one set to another """
+        """Move a member from one set to another
+        """
         return self._query(
             tr,
             b"smove",
@@ -1577,7 +1618,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def lpush(self, tr, key: NativeType, values: ListOf(NativeType)) -> int:
-        """ Prepend one or multiple values to a list """
+        """Prepend one or multiple values to a list
+        """
         return self._query(
             tr,
             b"lpush",
@@ -1587,14 +1629,16 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def lpushx(self, tr, key: NativeType, value: NativeType) -> int:
-        """ Prepend a value to a list, only if the list exists """
+        """Prepend a value to a list, only if the list exists
+        """
         return self._query(
             tr, b"lpushx", self.encode_from_native(key), self.encode_from_native(value)
         )
 
     @_query_command
     def rpush(self, tr, key: NativeType, values: ListOf(NativeType)) -> int:
-        """ Append one or multiple values to a list """
+        """Append one or multiple values to a list
+        """
         return self._query(
             tr,
             b"rpush",
@@ -1604,19 +1648,22 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def rpushx(self, tr, key: NativeType, value: NativeType) -> int:
-        """ Append a value to a list, only if the list exists """
+        """Append a value to a list, only if the list exists
+        """
         return self._query(
             tr, b"rpushx", self.encode_from_native(key), self.encode_from_native(value)
         )
 
     @_query_command
     def llen(self, tr, key: NativeType) -> int:
-        """ Returns the length of the list stored at key. """
+        """Return the length of the list stored at key
+        """
         return self._query(tr, b"llen", self.encode_from_native(key))
 
     @_query_command
     def lrem(self, tr, key: NativeType, count: int = 0, value="") -> int:
-        """ Remove elements from a list """
+        """Remove elements from a list
+        """
         return self._query(
             tr,
             b"lrem",
@@ -1627,7 +1674,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def lrange(self, tr, key, start: int = 0, stop: int = -1) -> ListReply:
-        """ Get a range of elements from a list. """
+        """Get a range of elements from a list
+        """
         return self._query(
             tr,
             b"lrange",
@@ -1638,7 +1686,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def ltrim(self, tr, key: NativeType, start: int = 0, stop: int = -1) -> StatusReply:
-        """ Trim a list to the specified range """
+        """Trim a list to the specified range
+        """
         return self._query(
             tr,
             b"ltrim",
@@ -1649,19 +1698,22 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def lpop(self, tr, key: NativeType) -> (NativeType, NoneType):
-        """ Remove and get the first element in a list """
+        """Remove and get the first element in a list
+        """
         return self._query(tr, b"lpop", self.encode_from_native(key))
 
     @_query_command
     def rpop(self, tr, key: NativeType) -> (NativeType, NoneType):
-        """ Remove and get the last element in a list """
+        """Remove and get the last element in a list
+        """
         return self._query(tr, b"rpop", self.encode_from_native(key))
 
     @_query_command
     def rpoplpush(
         self, tr, source: NativeType, destination: NativeType
     ) -> (NativeType, NoneType):
-        """ Remove the last element in a list, append it to another list and return it """
+        """Remove the last element in a list, append it to another list and return it
+        """
         return self._query(
             tr,
             b"rpoplpush",
@@ -1671,23 +1723,26 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def lindex(self, tr, key: NativeType, index: int) -> (NativeType, NoneType):
-        """ Get an element from a list by its index """
+        """Get an element from a list by its index
+        """
         return self._query(
             tr, b"lindex", self.encode_from_native(key), self._encode_int(index)
         )
 
     @_query_command
     def blpop(self, tr, keys: ListOf(NativeType), timeout: int = 0) -> BlockingPopReply:
-        """ Remove and get the first element in a list, or block until one is available.
+        """Remove and get the first element in a list, or block until one is available.
         This will raise :class:`~asyncio_redis.TimeoutError` when
-        the timeout was exceeded and Redis returns `None`. """
+        the timeout was exceeded and Redis returns `None`.
+        """
         return self._blocking_pop(tr, b"blpop", keys, timeout=timeout)
 
     @_query_command
     def brpop(self, tr, keys: ListOf(NativeType), timeout: int = 0) -> BlockingPopReply:
-        """ Remove and get the last element in a list, or block until one is available.
+        """Remove and get the last element in a list, or block until one is available.
         This will raise :class:`~asyncio_redis.TimeoutError` when
-        the timeout was exceeded and Redis returns `None`. """
+        the timeout was exceeded and Redis returns `None`.
+        """
         return self._blocking_pop(tr, b"brpop", keys, timeout=timeout)
 
     def _blocking_pop(self, tr, command, keys, timeout: int = 0):
@@ -1702,7 +1757,9 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     async def brpoplpush(
         self, tr, source: NativeType, destination: NativeType, timeout: int = 0
     ) -> NativeType:
-        """ Pop a value from a list, push it to another list and return it; or block until one is available """
+        """Pop a value from a list, push it to another list and return it, or block
+        until one is available
+        """
         result = await self._query(
             tr,
             b"brpoplpush",
@@ -1720,7 +1777,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def lset(self, tr, key: NativeType, index: int, value: NativeType) -> StatusReply:
-        """ Set the value of an element in a list by its index. """
+        """Set the value of an element in a list by its index
+        """
         return self._query(
             tr,
             b"lset",
@@ -1733,7 +1791,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     def linsert(
         self, tr, key: NativeType, pivot: NativeType, value: NativeType, before=False
     ) -> int:
-        """ Insert an element before or after another element in a list """
+        """Insert an element before or after another element in a list
+        """
         return self._query(
             tr,
             b"linsert",
@@ -1755,12 +1814,12 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         only_if_exists=False,
         return_num_changed=False,
     ) -> int:
-        """
-        Add one or more members to a sorted set, or update its score if it already exists
+        """Add one or more members to a sorted set, or update its score if it already
+        exists
 
         ::
 
-            yield protocol.zadd('myzset', { 'key': 4, 'key2': 5 })
+            await protocol.zadd('myzset', { 'key': 4, 'key2': 5 })
         """
 
         options = []
@@ -1786,8 +1845,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def zpopmin(self, tr, key: NativeType, count: int = 1) -> ZRangeReply:
-        """
-        Return the specified numbers of first elements from sorted set with a minimum score
+        """Return the specified numbers of first elements from sorted set with a minimum
+        score.
 
         You can do the following to recieve the slice of the sorted set as a
         python dict (mapping the keys to their scores):
@@ -1804,8 +1863,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     def zrange(
         self, tr, key: NativeType, start: int = 0, stop: int = -1
     ) -> ZRangeReply:
-        """
-        Return a range of members in a sorted set, by index.
+        """Return a range of members in a sorted set, by index.
 
         You can do the following to receive the slice of the sorted set as a
         python dict (mapping the keys to their scores):
@@ -1833,8 +1891,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def zrangebylex(self, tr, key: NativeType, start: str, stop: str) -> SetReply:
-        """
-        Return a range of members in a sorted set, by index.
+        """Return a range of members in a sorted set, by index.
 
         You can do the following to receive the slice of the sorted set as a
         python dict (mapping the keys to their scores):
@@ -1863,8 +1920,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     def zrevrange(
         self, tr, key: NativeType, start: int = 0, stop: int = -1
     ) -> ZRangeReply:
-        """
-        Return a range of members in a reversed sorted set, by index.
+        """Return a range of members in a reversed sorted set, by index.
 
         You can do the following to receive the slice of the sorted set as a
         python dict (mapping the keys to their scores):
@@ -1900,7 +1956,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         offset: int = 0,
         limit: int = -1,
     ) -> ZRangeReply:
-        """ Return a range of members in a sorted set, by score """
+        """Return a range of members in a sorted set, by score
+        """
         return self._query(
             tr,
             b"zrangebyscore",
@@ -1923,7 +1980,9 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         offset: int = 0,
         limit: int = -1,
     ) -> ZRangeReply:
-        """ Return a range of members in a sorted set, by score, with scores ordered from high to low """
+        """Return a range of members in a sorted set, by score, with scores ordered from
+        high to low
+        """
         return self._query(
             tr,
             b"zrevrangebyscore",
@@ -1944,7 +2003,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         min: ZScoreBoundary = ZScoreBoundary.MIN_VALUE,
         max: ZScoreBoundary = ZScoreBoundary.MAX_VALUE,
     ) -> int:
-        """ Remove all members in a sorted set within the given scores """
+        """Remove all members in a sorted set within the given scores
+        """
         return self._query(
             tr,
             b"zremrangebyscore",
@@ -1955,7 +2015,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def zremrangebyrank(self, tr, key: NativeType, min: int = 0, max: int = -1) -> int:
-        """ Remove all members in a sorted set within the given indexes """
+        """Remove all members in a sorted set within the given indexes
+        """
         return self._query(
             tr,
             b"zremrangebyrank",
@@ -1968,7 +2029,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     def zcount(
         self, tr, key: NativeType, min: ZScoreBoundary, max: ZScoreBoundary
     ) -> int:
-        """ Count the members in a sorted set with scores within the given values """
+        """Count the members in a sorted set with scores within the given values
+        """
         return self._query(
             tr,
             b"zcount",
@@ -1979,7 +2041,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def zscore(self, tr, key: NativeType, member: NativeType) -> (float, NoneType):
-        """ Get the score associated with the given member in a sorted set """
+        """Get the score associated with the given member in a sorted set
+        """
         return self._query(
             tr, b"zscore", self.encode_from_native(key), self.encode_from_native(member)
         )
@@ -1993,7 +2056,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         weights: (NoneType, ListOf(float)) = None,
         aggregate=ZAggregate.SUM,
     ) -> int:
-        """ Add multiple sorted sets and store the resulting sorted set in a new key """
+        """Add multiple sorted sets and store the resulting sorted set in a new key
+        """
         return self._zstore(tr, b"zunionstore", destination, keys, weights, aggregate)
 
     @_query_command
@@ -2005,11 +2069,14 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         weights: (NoneType, ListOf(float)) = None,
         aggregate=ZAggregate.SUM,
     ) -> int:
-        """ Intersect multiple sorted sets and store the resulting sorted set in a new key """
+        """Intersect multiple sorted sets and store the resulting sorted set in a new
+        key
+        """
         return self._zstore(tr, b"zinterstore", destination, keys, weights, aggregate)
 
     def _zstore(self, tr, command, destination, keys, weights, aggregate):
-        """ Common part for zunionstore and zinterstore. """
+        """Common part for zunionstore and zinterstore
+        """
         numkeys = len(keys)
         if weights is None:
             weights = [1] * numkeys
@@ -2032,19 +2099,23 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def zcard(self, tr, key: NativeType) -> int:
-        """ Get the number of members in a sorted set """
+        """Get the number of members in a sorted set
+        """
         return self._query(tr, b"zcard", self.encode_from_native(key))
 
     @_query_command
     def zrank(self, tr, key: NativeType, member: NativeType) -> (int, NoneType):
-        """ Determine the index of a member in a sorted set """
+        """Determine the index of a member in a sorted set
+        """
         return self._query(
             tr, b"zrank", self.encode_from_native(key), self.encode_from_native(member)
         )
 
     @_query_command
     def zrevrank(self, tr, key: NativeType, member: NativeType) -> (int, NoneType):
-        """ Determine the index of a member in a sorted set, with scores ordered from high to low """
+        """Determine the index of a member in a sorted set, with scores ordered from
+        high to low
+        """
         return self._query(
             tr,
             b"zrevrank",
@@ -2061,7 +2132,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         member: NativeType,
         only_if_exists=False,
     ) -> (float, NoneType):
-        """ Increment the score of a member in a sorted set """
+        """Increment the score of a member in a sorted set
+        """
 
         if only_if_exists:
             return self._query(
@@ -2084,7 +2156,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def zrem(self, tr, key: NativeType, members: ListOf(NativeType)) -> int:
-        """ Remove one or more members from a sorted set """
+        """Remove one or more members from a sorted set
+        """
         return self._query(
             tr,
             b"zrem",
@@ -2096,7 +2169,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def hset(self, tr, key: NativeType, field: NativeType, value: NativeType) -> int:
-        """ Set the string value of a hash field """
+        """Set the string value of a hash field
+        """
         return self._query(
             tr,
             b"hset",
@@ -2107,7 +2181,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def hmset(self, tr, key: NativeType, values: dict) -> StatusReply:
-        """ Set multiple hash fields to multiple values """
+        """Set multiple hash fields to multiple values
+        """
         data = []
         for k, v in values.items():
             assert isinstance(k, self.native_type)
@@ -2120,7 +2195,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def hsetnx(self, tr, key: NativeType, field: NativeType, value: NativeType) -> int:
-        """ Set the value of a hash field, only if the field does not exist """
+        """Set the value of a hash field, only if the field does not exist
+        """
         return self._query(
             tr,
             b"hsetnx",
@@ -2131,7 +2207,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def hdel(self, tr, key: NativeType, fields: ListOf(NativeType)) -> int:
-        """ Delete one or more hash fields """
+        """Delete one or more hash fields
+        """
         return self._query(
             tr,
             b"hdel",
@@ -2141,41 +2218,48 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def hget(self, tr, key: NativeType, field: NativeType) -> (NativeType, NoneType):
-        """ Get the value of a hash field """
+        """Get the value of a hash field
+        """
         return self._query(
             tr, b"hget", self.encode_from_native(key), self.encode_from_native(field)
         )
 
     @_query_command
     def hexists(self, tr, key: NativeType, field: NativeType) -> bool:
-        """ Returns if field is an existing field in the hash stored at key. """
+        """Return if field is an existing field in the hash stored at key
+        """
         return self._query(
             tr, b"hexists", self.encode_from_native(key), self.encode_from_native(field)
         )
 
     @_query_command
     def hkeys(self, tr, key: NativeType) -> SetReply:
-        """ Get all the keys in a hash. (Returns a set) """
+        """Get all the keys in a hash. Returns a set.
+         """
         return self._query(tr, b"hkeys", self.encode_from_native(key))
 
     @_query_command
     def hvals(self, tr, key: NativeType) -> ListReply:
-        """ Get all the values in a hash. (Returns a list) """
+        """Get all the values in a hash. Returns a list.
+        """
         return self._query(tr, b"hvals", self.encode_from_native(key))
 
     @_query_command
     def hlen(self, tr, key: NativeType) -> int:
-        """ Returns the number of fields contained in the hash stored at key. """
+        """Return the number of fields contained in the hash stored at key
+        """
         return self._query(tr, b"hlen", self.encode_from_native(key))
 
     @_query_command
     def hgetall(self, tr, key: NativeType) -> DictReply:
-        """ Get the value of a hash field """
+        """Get the value of a hash field
+        """
         return self._query(tr, b"hgetall", self.encode_from_native(key))
 
     @_query_command
     def hmget(self, tr, key: NativeType, fields: ListOf(NativeType)) -> ListReply:
-        """ Get the values of all the given hash fields """
+        """Get the values of all the given hash fields
+        """
         return self._query(
             tr,
             b"hmget",
@@ -2185,8 +2269,9 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def hincrby(self, tr, key: NativeType, field: NativeType, increment) -> int:
-        """ Increment the integer value of a hash field by the given number
-        Returns: the value at field after the increment operation. """
+        """Increment the integer value of a hash field by the given number.
+        Return the value at field after the increment operation.
+        """
         assert isinstance(increment, int)
         return self._query(
             tr,
@@ -2200,8 +2285,9 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     def hincrbyfloat(
         self, tr, key: NativeType, field: NativeType, increment: (int, float)
     ) -> float:
-        """ Increment the float value of a hash field by the given amount
-        Returns: the value at field after the increment operation. """
+        """Increment the float value of a hash field by the given amount.
+        Return the value at field after the increment operation.
+        """
         return self._query(
             tr,
             b"hincrbyfloat",
@@ -2215,8 +2301,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_command
     async def start_subscribe(self, tr, *a) -> "Subscription":
-        """
-        Start a pubsub listener.
+        """Start a pubsub listener.
 
         ::
 
@@ -2242,19 +2327,22 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_command
     def _subscribe(self, tr, channels: ListOf(NativeType)) -> NoneType:
-        """ Listen for messages published to the given channels """
+        """Listen for messages published to the given channels
+        """
         self._pubsub_channels |= set(channels)
         return self._pubsub_method("subscribe", channels)
 
     @_command
     def _unsubscribe(self, tr, channels: ListOf(NativeType)) -> NoneType:
-        """ Stop listening for messages posted to the given channels """
+        """Stop listening for messages posted to the given channels
+        """
         self._pubsub_channels -= set(channels)
         return self._pubsub_method("unsubscribe", channels)
 
     @_command
     def _psubscribe(self, tr, patterns: ListOf(NativeType)) -> NoneType:
-        """ Listen for messages published to channels matching the given patterns """
+        """Listen for messages published to channels matching the given patterns
+        """
         self._pubsub_patterns |= set(patterns)
         return self._pubsub_method("psubscribe", patterns)
 
@@ -2262,7 +2350,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     def _punsubscribe(
         self, tr, patterns: ListOf(NativeType)
     ) -> NoneType:  # XXX: unittest
-        """ Stop listening for messages posted to channels matching the given patterns """
+        """Stop listening for messages posted to channels matching the given patterns
+        """
         self._pubsub_patterns -= set(patterns)
         return self._pubsub_method("punsubscribe", patterns)
 
@@ -2285,8 +2374,9 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def publish(self, tr, channel: NativeType, message: NativeType) -> int:
-        """ Post a message to a channel
-        (Returns the number of clients that received this message.) """
+        """Post a message to a channel.
+        Return the number of clients that received this message.
+        """
         return self._query(
             tr,
             b"publish",
@@ -2296,10 +2386,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def pubsub_channels(self, tr, pattern: (NativeType, NoneType) = None) -> ListReply:
-        """
-        Lists the currently active channels. An active channel is a Pub/Sub
-        channel with one ore more subscribers (not including clients subscribed
-        to patterns).
+        """List the currently active channels. An active channel is a Pub/Sub channel
+        with one ore more subscribers (not including clients subscribed to patterns)
         """
         return self._query(
             tr,
@@ -2310,75 +2398,87 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def pubsub_numsub(self, tr, channels: ListOf(NativeType)) -> DictReply:
-        """Returns the number of subscribers (not counting clients subscribed
-        to patterns) for the specified channels.  """
+        """Return the number of subscribers (not counting clients subscribed to
+        patterns) for the specified channels
+        """
         return self._query(
             tr, b"pubsub", b"numsub", *[self.encode_from_native(c) for c in channels]
         )
 
     @_query_command
     def pubsub_numpat(self, tr) -> int:
-        """ Returns the number of subscriptions to patterns (that are performed
-        using the PSUBSCRIBE command). Note that this is not just the count of
-        clients subscribed to patterns but the total number of patterns all the
-        clients are subscribed to. """
+        """Return the number of subscriptions to patterns (that are performed using the
+        PSUBSCRIBE command). Note that this is not just the count of clients subscribed
+        to patterns but the total number of patterns all the clients are subscribed to.
+        """
         return self._query(tr, b"pubsub", b"numpat")
 
     # Server
 
     @_query_command
     def ping(self, tr) -> StatusReply:
-        """ Ping the server (Returns PONG) """
+        """Ping the server (Returns PONG)
+        """
         return self._query(tr, b"ping")
 
     @_query_command
     def echo(self, tr, string: NativeType) -> NativeType:
-        """ Echo the given string """
+        """Echo the given string
+        """
         return self._query(tr, b"echo", self.encode_from_native(string))
 
     @_query_command
     def save(self, tr) -> StatusReply:
-        """ Synchronously save the dataset to disk """
+        """Synchronously save the dataset to disk
+        """
         return self._query(tr, b"save")
 
     @_query_command
     def bgsave(self, tr) -> StatusReply:
-        """ Asynchronously save the dataset to disk """
+        """Asynchronously save the dataset to disk
+        """
         return self._query(tr, b"bgsave")
 
     @_query_command
     def bgrewriteaof(self, tr) -> StatusReply:
-        """ Asynchronously rewrite the append-only file """
+        """Asynchronously rewrite the append-only file
+        """
         return self._query(tr, b"bgrewriteaof")
 
     @_query_command
     def lastsave(self, tr) -> int:
-        """ Get the UNIX time stamp of the last successful save to disk """
+        """Get the UNIX time stamp of the last successful save to disk
+        """
         return self._query(tr, b"lastsave")
 
     @_query_command
     def dbsize(self, tr) -> int:
-        """ Return the number of keys in the currently-selected database. """
+        """Return the number of keys in the currently-selected database
+        """
         return self._query(tr, b"dbsize")
 
     @_query_command
     def flushall(self, tr) -> StatusReply:
-        """ Remove all keys from all databases """
+        """Remove all keys from all databases
+        """
         return self._query(tr, b"flushall")
 
     @_query_command
     def flushdb(self, tr) -> StatusReply:
-        """ Delete all the keys of the currently selected DB. This command never fails. """
+        """Delete all the keys of the currently selected DB. This command never fails.
+        """
         return self._query(tr, b"flushdb")
 
     @_query_command
     def type(self, tr, key: NativeType) -> StatusReply:
-        """ Determine the type stored at key """
+        """Determine the type stored at key
+        """
         return self._query(tr, b"type", self.encode_from_native(key))
 
     @_query_command
     def config_set(self, tr, parameter: str, value: str) -> StatusReply:
-        """ Set a configuration parameter to the given value """
+        """Set a configuration parameter to the given value
+        """
         return self._query(
             tr,
             b"config",
@@ -2389,22 +2489,26 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def config_get(self, tr, parameter: str) -> ConfigPairReply:
-        """ Get the value of a configuration parameter """
+        """Get the value of a configuration parameter
+        """
         return self._query(tr, b"config", b"get", self.encode_from_native(parameter))
 
     @_query_command
     def config_rewrite(self, tr) -> StatusReply:
-        """ Rewrite the configuration file with the in memory configuration """
+        """Rewrite the configuration file with the in memory configuration
+        """
         return self._query(tr, b"config", b"rewrite")
 
     @_query_command
     def config_resetstat(self, tr) -> StatusReply:
-        """ Reset the stats returned by INFO """
+        """Reset the stats returned by INFO
+        """
         return self._query(tr, b"config", b"resetstat")
 
     @_query_command
     def info(self, tr, section: (NativeType, NoneType) = None) -> InfoReply:
-        """ Get information and statistics about the server """
+        """Get information and statistics about the server
+        """
         if section is None:
             return self._query(tr, b"info")
         else:
@@ -2412,28 +2516,31 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def shutdown(self, tr, save=False) -> StatusReply:
-        """ Synchronously save the dataset to disk and then shut down the server """
+        """Synchronously save the dataset to disk and then shut down the server
+        """
         return self._query(tr, b"shutdown", (b"save" if save else b"nosave"))
 
     @_query_command
     def client_getname(self, tr) -> NativeType:
-        """ Get the current connection name """
+        """Get the current connection name
+        """
         return self._query(tr, b"client", b"getname")
 
     @_query_command
     def client_setname(self, tr, name) -> StatusReply:
-        """ Set the current connection name """
+        """Set the current connection name
+        """
         return self._query(tr, b"client", b"setname", self.encode_from_native(name))
 
     @_query_command
     def client_list(self, tr) -> ClientListReply:
-        """ Get the list of client connections """
+        """Get the list of client connections
+        """
         return self._query(tr, b"client", b"list")
 
     @_query_command
     def client_kill(self, tr, address: str) -> StatusReply:
-        """
-        Kill the connection of a client
+        """Kill the connection of a client.
         `address` should be an "ip:port" string.
         """
         return self._query(tr, b"client", b"kill", address.encode("utf-8"))
@@ -2442,8 +2549,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_command
     async def register_script(self, tr, script: str) -> "Script":
-        """
-        Register a LUA script.
+        """Register a LUA script.
 
         ::
 
@@ -2457,22 +2563,22 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def script_exists(self, tr, shas: ListOf(str)) -> ListOf(bool):
-        """ Check existence of scripts in the script cache. """
+        """Check existence of scripts in the script cache
+        """
         return self._query(
             tr, b"script", b"exists", *[sha.encode("ascii") for sha in shas]
         )
 
     @_query_command
     def script_flush(self, tr) -> StatusReply:
-        """ Remove all the scripts from the script cache. """
+        """Remove all the scripts from the script cache
+        """
         return self._query(tr, b"script", b"flush")
 
     @_query_command
     async def script_kill(self, tr) -> StatusReply:
-        """
-        Kill the script currently in execution.  This raises
-        :class:`~asyncio_redis.NoRunningScriptError` when there are no
-        scrips running.
+        """Kill the script currently in execution. This raises
+        :class:`~asyncio_redis.NoRunningScriptError` when there are no scrips running.
         """
         try:
             return await self._query(tr, b"script", b"kill")
@@ -2490,8 +2596,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         keys: (ListOf(NativeType), NoneType) = None,
         args: (ListOf(NativeType), NoneType) = None,
     ) -> EvalScriptReply:
-        """
-        Evaluates a script cached on the server side by its SHA1 digest.
+        """Evaluate a script cached on the server side by its SHA1 digest.
         Scripts are cached on the server side using the SCRIPT LOAD command.
 
         The return type/value depends on the script.
@@ -2519,15 +2624,15 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
     @_query_command
     def script_load(self, tr, script: str) -> str:
-        """ Load script, returns sha1 """
+        """Load script and return its sha1
+        """
         return self._query(tr, b"script", b"load", script.encode("utf-8"))
 
     # Scanning
 
     @_command
     async def scan(self, tr, match: (NativeType, NoneType) = None) -> Cursor:
-        """
-        Walk through the keys space. You can either fetch the items one by one
+        """Walk through the keys space. You can either fetch the items one by one
         or in bulk.
 
         ::
@@ -2585,8 +2690,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     async def sscan(
         self, tr, key: NativeType, match: (NativeType, NoneType) = None
     ) -> SetCursor:
-        """
-        Incrementally iterate set elements
+        """Incrementally iterate set elements
 
         Also see: :func:`~asyncio_redis.RedisProtocol.scan`
         """
@@ -2601,8 +2705,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     async def hscan(
         self, tr, key: NativeType, match: (NativeType, NoneType) = None
     ) -> DictCursor:
-        """
-        Incrementally iterate hash fields and associated values
+        """Incrementally iterate hash fields and associated values
         Also see: :func:`~asyncio_redis.RedisProtocol.scan`
         """
         name = "hscan(key=%r match=%r)" % (key, match)
@@ -2616,8 +2719,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     async def zscan(
         self, tr, key: NativeType, match: (NativeType, NoneType) = None
     ) -> DictCursor:
-        """
-        Incrementally iterate sorted sets elements and associated scores
+        """Incrementally iterate sorted sets elements and associated scores
         Also see: :func:`~asyncio_redis.RedisProtocol.scan`
         """
         name = "zscan(key=%r match=%r)" % (key, match)
@@ -2653,8 +2755,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     # Transaction
     @_command
     async def watch(self, tr, keys: ListOf(NativeType)) -> NoneType:
-        """
-        Watch keys.
+        """Watch keys.
 
         ::
 
@@ -2689,8 +2790,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
     async def multi(
         self, tr, watch: (ListOf(NativeType), NoneType) = None
     ) -> "Transaction":
-        """
-        Start of transaction.
+        """Start of transaction.
 
         ::
 
@@ -2730,8 +2830,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
         return tr
 
     async def _exec(self, tr):
-        """
-        Execute all commands issued after MULTI
+        """Execute all commands issued after MULTI
         """
         if not self._transaction or self._transaction != tr:
             raise Error("Not in transaction")
@@ -2765,8 +2864,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             self._transaction_lock.release()
 
     async def _discard(self, tr):
-        """
-        Discard all commands issued after MULTI
+        """Discard all commands issued after MULTI
         """
         if not self._transaction or self._transaction != tr:
             raise Error("Not in transaction")
@@ -2780,8 +2878,7 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
             self._transaction_lock.release()
 
     async def _unwatch(self, tr):
-        """
-        Forget about all watched keys
+        """Forget about all watched keys
         """
         if not self._transaction or self._transaction != tr:
             raise Error("Not in transaction")
@@ -2791,7 +2888,8 @@ class RedisProtocol(asyncio.Protocol, metaclass=_RedisProtocolMeta):
 
 
 class Script:
-    """ Lua script. """
+    """Lua script
+    """
 
     def __init__(self, sha, code, get_evalsha_func):
         self.sha = sha
@@ -2799,8 +2897,7 @@ class Script:
         self.get_evalsha_func = get_evalsha_func
 
     def run(self, keys=[], args=[]):
-        """
-        Returns a coroutine that executes the script.
+        """Return a coroutine that executes the script.
 
         ::
 
@@ -2828,8 +2925,7 @@ class Transaction:
         self._protocol = protocol
 
     def __getattr__(self, name):
-        """
-        Proxy to a protocol.
+        """Proxy to a protocol
         """
         # Only proxy commands.
         if name not in _all_commands:
@@ -2849,14 +2945,12 @@ class Transaction:
         return wrapper
 
     def discard(self):
-        """
-        Discard all commands issued after MULTI
+        """Discard all commands issued after MULTI
         """
         return self._protocol._discard(self)
 
     def exec(self):
-        """
-        Execute transaction.
+        """Execute transaction.
 
         This can raise a :class:`~asyncio_redis.TransactionError`
         when the transaction fails.
@@ -2864,15 +2958,13 @@ class Transaction:
         return self._protocol._exec(self)
 
     def unwatch(self):  # XXX: test
-        """
-        Forget about all watched keys
+        """Forget about all watched keys
         """
         return self._protocol._unwatch(self)
 
 
 class Subscription:
-    """
-    Pubsub subscription
+    """Pubsub subscription
     """
 
     def __init__(self, protocol):
@@ -2896,9 +2988,7 @@ class Subscription:
         return self.protocol._punsubscribe(self, patterns)
 
     async def next_published(self):
-        """
-        Coroutine which waits for next pubsub message to be received and
-        returns it.
+        """Coroutine which waits for next pubsub message to be received and returns it.
 
         :returns: instance of :class:`PubSubReply <asyncio_redis.replies.PubSubReply>`
         """
@@ -2906,8 +2996,7 @@ class Subscription:
 
 
 class HiRedisProtocol(RedisProtocol, metaclass=_RedisProtocolMeta):
-    """
-    Protocol implementation that uses the `hiredis` library for parsing the
+    """Protocol implementation that uses the `hiredis` library for parsing the
     incoming data. This will be faster in many cases, but not necessarily
     always.
 

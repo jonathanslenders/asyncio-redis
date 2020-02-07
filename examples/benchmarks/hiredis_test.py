@@ -78,13 +78,7 @@ async def test5(connection):
     assert s2 == s
 
 
-benchmarks = [
-    (1000, test1),
-    (100, test2),
-    (100, test3),
-    (100, test4),
-    (100, test5),
-]
+benchmarks = [(1000, test1), (100, test2), (100, test3), (100, test4), (100, test5)]
 
 
 async def main():

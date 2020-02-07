@@ -246,7 +246,8 @@ class RedisProtocolTest(TestCase):
 
         with self.assertRaises(ErrorReply):
             await protocol.strlen("my_key3")
-        # Redis exception: b'ERR Operation against a key holding the wrong kind of value')
+        # Redis exception:
+        # b'ERR Operation against a key holding the wrong kind of value'
 
     @redis_test
     async def test_exists_and_delete(self, transport, protocol):
@@ -1328,7 +1329,7 @@ class RedisProtocolTest(TestCase):
         self.assertEqual(result, 2)
         result = await protocol.zrange("inter_key")
         result = await result.asdict()
-        self.assertEqual(result, {"key": 2.5, "key2": 7.25,})
+        self.assertEqual(result, {"key": 2.5, "key2": 7.25})
 
     @redis_test
     async def test_randomkey(self, transport, protocol):
@@ -1918,7 +1919,7 @@ class RedisBytesProtocolTest(TestCase):
         async def listener():
             # Subscribe
             transport2, protocol2 = await connect(
-                lambda **kw: RedisProtocol(encoder=BytesEncoder(), **kw),
+                lambda **kw: RedisProtocol(encoder=BytesEncoder(), **kw)
             )
 
             subscription = await protocol2.start_subscribe()
@@ -1945,7 +1946,7 @@ class NoTypeCheckingTest(TestCase):
         transport, protocol = await connect(
             lambda **kw: RedisProtocol(
                 encoder=BytesEncoder(), enable_typechecking=False, **kw
-            ),
+            )
         )
 
         # Setting values should still work.
@@ -2282,7 +2283,8 @@ class NoGlobalLoopTest(TestCase):
             finally:
                 connection.close()
         finally:
-            # Run loop briefly until socket has been closed. (call_soon behind the scenes.)
+            # Run loop briefly until socket has been closed.
+            # (call_soon behind the scenes.)
             new_loop.run_until_complete(asyncio.sleep(0.1))
 
             new_loop.close()
@@ -2290,7 +2292,8 @@ class NoGlobalLoopTest(TestCase):
 
 
 class RedisProtocolWithoutGlobalEventloopTest(RedisProtocolTest):
-    """ Run all the tests from `RedisProtocolTest` again without a global event loop. """
+    """Run all the tests from `RedisProtocolTest` again without a global event loop
+    """
 
     def setUp(self):
         super().setUp()
@@ -2307,7 +2310,9 @@ class RedisProtocolWithoutGlobalEventloopTest(RedisProtocolTest):
 
 
 class RedisBytesWithoutGlobalEventloopProtocolTest(RedisBytesProtocolTest):
-    """ Run all the tests from `RedisBytesProtocolTest`` again without a global event loop. """
+    """Run all the tests from `RedisBytesProtocolTest`` again without a global event
+    loop
+    """
 
     def setUp(self):
         super().setUp()

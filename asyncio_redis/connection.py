@@ -40,7 +40,7 @@ class Connection:
         :param int db:
             Redis database
         :param encoder:
-            Encoder to use for encoding to or decoding from redis bytes to a native type.
+            Encoder to use for encoding to or decoding from redis bytes to a native type
         :type encoder:
             :class:`~asyncio_redis.encoders.BaseEncoder`
         :param bool auto_reconnect:

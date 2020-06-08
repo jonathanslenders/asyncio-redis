@@ -1,7 +1,7 @@
 CHANGELOG
 =========
 
-0.16.0: unreleased
+0.16.0: 2020-06-08
 ------------------
 - Added support for Python 3.8
 - Dropped support for Python <3.6

@@ -4,7 +4,7 @@ from setuptools import setup
 setup(
     name="asyncio_redis",
     author="Jonathan Slenders",
-    version="0.15.1",
+    version="0.16.0",
     license="LICENSE.txt",
     classifiers=[
         "Development Status :: 4 - Beta",

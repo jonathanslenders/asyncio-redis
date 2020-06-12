@@ -90,16 +90,17 @@ connection.
     import asyncio
     import asyncio_redis
 
-    @asyncio.coroutine
-    def example():
+
+    async def example():
         # Create Redis connection
-        connection = yield from asyncio_redis.Connection.create(host='127.0.0.1', port=6379)
+        connection = await asyncio_redis.Connection.create(host='localhost', port=6379)
 
         # Set a key
-        yield from connection.set('my_key', 'my_value')
+        await connection.set('my_key', 'my_value')
 
         # When finished, close the connection.
         connection.close()
+
 
     if __name__ == '__main__':
         loop = asyncio.get_event_loop()
@@ -119,13 +120,13 @@ connection will be used for new commands.
     import asyncio
     import asyncio_redis
 
-    @asyncio.coroutine
-    def example():
+
+    async def example():
         # Create Redis connection
-        connection = yield from asyncio_redis.Pool.create(host='127.0.0.1', port=6379, poolsize=10)
+        connection = await asyncio_redis.Pool.create(host='localhost', port=6379, poolsize=10)
 
         # Set a key
-        yield from connection.set('my_key', 'my_value')
+        await connection.set('my_key', 'my_value')
 
         # When finished, close the connection pool.
         connection.close()
@@ -139,24 +140,24 @@ Transactions example
     import asyncio
     import asyncio_redis
 
-    @asyncio.coroutine
-    def example():
+
+    async def example(loop):
         # Create Redis connection
-        connection = yield from asyncio_redis.Pool.create(host='127.0.0.1', port=6379, poolsize=10)
+        connection = await asyncio_redis.Pool.create(host='localhost', port=6379, poolsize=10)
 
         # Create transaction
-        transaction = yield from connection.multi()
+        transaction = await connection.multi()
 
         # Run commands in transaction (they return future objects)
-        f1 = yield from transaction.set('key', 'value')
-        f2 = yield from transaction.set('another_key', 'another_value')
+        f1 = await transaction.set('key', 'value')
+        f2 = await transaction.set('another_key', 'another_value')
 
         # Commit transaction
-        yield from transaction.exec()
+        await transaction.exec()
 
         # Retrieve results
-        result1 = yield from f1
-        result2 = yield from f2
+        result1 = await f1
+        result2 = await f2
 
         # When finished, close the connection pool.
         connection.close()
@@ -173,20 +174,19 @@ Pubsub example
     import asyncio
     import asyncio_redis
 
-    @asyncio.coroutine
-    def example():
+    async def example():
         # Create connection
-        connection = yield from asyncio_redis.Connection.create(host='127.0.0.1', port=6379)
+        connection = await asyncio_redis.Connection.create(host='localhost', port=6379)
 
         # Create subscriber.
-        subscriber = yield from connection.start_subscribe()
+        subscriber = await connection.start_subscribe()
 
         # Subscribe to channel.
-        yield from subscriber.subscribe([ 'our-channel' ])
+        await subscriber.subscribe([ 'our-channel' ])
 
         # Inside a while loop, wait for incoming events.
         while True:
-            reply = yield from subscriber.next_published()
+            reply = await subscriber.next_published()
             print('Received: ', repr(reply.value), 'on channel', reply.channel)
 
         # When finished, close the connection.
@@ -208,19 +208,19 @@ LUA Scripting example
     return value * ARGV[1]
     """
 
-    @asyncio.coroutine
-    def example():
-        connection = yield from asyncio_redis.Connection.create(host='127.0.0.1', port=6379)
+
+    async def example():
+        connection = await asyncio_redis.Connection.create(host='localhost', port=6379)
 
         # Set a key
-        yield from connection.set('my_key', '2')
+        await connection.set('my_key', '2')
 
         # Register script
-        multiply = yield from connection.register_script(code)
+        multiply = await connection.register_script(code)
 
         # Run script
-        script_reply = yield from multiply.run(keys=['my_key'], args=['5'])
-        result = yield from script_reply.return_value()
+        script_reply = await multiply.run(keys=['my_key'], args=['5'])
+        result = await script_reply.return_value()
         print(result) # prints 2 * 5
 
         # When finished, close the connection.
@@ -235,19 +235,19 @@ Example using the Protocol class
     import asyncio
     import asyncio_redis
 
-    @asyncio.coroutine
-    def example():
+
+    async def example():
         loop = asyncio.get_event_loop()
 
         # Create Redis connection
-        transport, protocol = yield from loop.create_connection(
-                    asyncio_redis.RedisProtocol, '127.0.0.1', 6379)
+        transport, protocol = await loop.create_connection(
+                    asyncio_redis.RedisProtocol, 'localhost', 6379)
 
         # Set a key
-        yield from protocol.set('my_key', 'my_value')
+        await protocol.set('my_key', 'my_value')
 
         # Get a key
-        result = yield from protocol.get('my_key')
+        result = await protocol.get('my_key')
         print(result)
 
         # Close transport when finished.
